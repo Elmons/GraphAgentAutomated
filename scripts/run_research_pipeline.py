@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         help="Research gate JSON path",
     )
     parser.add_argument(
+        "--failure-rules-path",
+        default="docs/benchmarks/failure_taxonomy_rules_v1.json",
+        help="Failure taxonomy rules JSON path used by recompute step",
+    )
+    parser.add_argument(
         "--manual-blueprints-root",
         default="docs/manual_blueprints/research_benchmark_v1",
         help="Manual blueprints root path",
@@ -129,6 +134,11 @@ def parse_args() -> argparse.Namespace:
         "--skip-failure-analysis",
         action="store_true",
         help="Skip analyze_failure_taxonomy.py",
+    )
+    parser.add_argument(
+        "--skip-failure-recompute",
+        action="store_true",
+        help="Skip recompute_failure_taxonomy.py",
     )
     parser.add_argument(
         "--skip-gate-eval",
@@ -372,6 +382,42 @@ def main() -> None:
             step = run_step("analyze_failure_taxonomy", command)
             if step.status == "ok":
                 step.output_path = str(parity_run_dir / "failure_taxonomy_analysis.json")
+            else:
+                failed_steps.append(step.name)
+            step_rows.append(step)
+            if step.status != "ok" and not args.continue_on_error:
+                _write_report(report_path, args, step_rows, failed_steps, experiment_run_dir, parity_run_dir)
+                raise SystemExit(2)
+
+    if not args.skip_failure_recompute:
+        if parity_run_dir is None:
+            failed_steps.append("recompute_failure_taxonomy")
+            step_rows.append(
+                StepResult(
+                    name="recompute_failure_taxonomy",
+                    status="failed",
+                    command=[],
+                    started_at=datetime.now(timezone.utc).isoformat(),
+                    ended_at=datetime.now(timezone.utc).isoformat(),
+                    duration_seconds=0.0,
+                    detail="missing parity_run_dir",
+                )
+            )
+            if not args.continue_on_error:
+                _write_report(report_path, args, step_rows, failed_steps, experiment_run_dir, parity_run_dir)
+                raise SystemExit(2)
+        else:
+            command = [
+                sys.executable,
+                "scripts/recompute_failure_taxonomy.py",
+                "--records-path",
+                str(parity_run_dir / "records.json"),
+                "--rules-path",
+                args.failure_rules_path,
+            ]
+            step = run_step("recompute_failure_taxonomy", command)
+            if step.status == "ok":
+                step.output_path = str(parity_run_dir / "recomputed_failure_taxonomy.json")
             else:
                 failed_steps.append(step.name)
             step_rows.append(step)
