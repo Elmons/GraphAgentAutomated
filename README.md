@@ -29,6 +29,9 @@
 18. `docs/21_paper_package.md` 投稿材料包
 19. `docs/22_top_conf_idea_rcds.md` 顶会 idea 与落地实现
 20. `docs/23_production_readiness.md` 生产化路线与门槛
+21. `docs/24_codex_session_guide.md` 新会话 Codex 强制指引
+
+新会话入口：先读 `docs/09_execution_todo.md` 与 `docs/24_codex_session_guide.md`。
 
 ## 开发（uv）
 
