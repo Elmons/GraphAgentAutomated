@@ -91,3 +91,12 @@ class MessageResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class MetricsResponse(BaseModel):
+    requests_total: int
+    errors_total: int
+    async_jobs_submitted_total: int
+    async_jobs_succeeded_total: int
+    async_jobs_failed_total: int
+    endpoints: dict[str, dict[str, float | int]]

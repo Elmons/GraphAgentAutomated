@@ -110,6 +110,10 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 提交接口返回 `202` 和 `job_id`，状态查询返回 `queued/running/succeeded/failed`。
 异步提交接口同样支持 `Idempotency-Key`，重复提交会返回同一 `job_id`。
 
+可观测性接口：
+
+- `GET /metrics`：返回请求量、错误量、异步作业计数和 endpoint 级延迟统计。
+
 ## 配置
 
 使用 `pydantic_settings` 统一管理环境变量，见 `.env.example`。

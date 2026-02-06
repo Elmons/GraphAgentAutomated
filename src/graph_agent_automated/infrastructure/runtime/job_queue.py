@@ -7,6 +7,8 @@ from threading import Lock
 from typing import Callable
 from uuid import uuid4
 
+from graph_agent_automated.infrastructure.observability.metrics import get_metrics_registry
+
 
 @dataclass
 class AsyncJobRecord:
@@ -29,6 +31,7 @@ class InMemoryJobQueue:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="gaa-job")
         self._lock = Lock()
         self._jobs: dict[str, AsyncJobRecord] = {}
+        self._metrics = get_metrics_registry()
 
     def submit(
         self,
@@ -53,6 +56,7 @@ class InMemoryJobQueue:
         with self._lock:
             self._jobs[job.job_id] = job
 
+        self._metrics.record_async_job_submitted()
         self._executor.submit(self._execute_job, job.job_id, runner)
         return job
 
@@ -104,6 +108,7 @@ class InMemoryJobQueue:
             job.result = result
             job.error = None
             job.updated_at = _utc_now_iso()
+        self._metrics.record_async_job_succeeded()
 
     def _set_failed(self, job_id: str, error: str) -> None:
         with self._lock:
@@ -113,6 +118,7 @@ class InMemoryJobQueue:
             job.status = "failed"
             job.error = error
             job.updated_at = _utc_now_iso()
+        self._metrics.record_async_job_failed()
 
 
 def _utc_now_iso() -> str:
