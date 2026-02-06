@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from graph_agent_automated.application.services import AgentOptimizationService
 from graph_agent_automated.core.config import Settings, get_settings
 from graph_agent_automated.core.database import get_db
+from graph_agent_automated.infrastructure.runtime.idempotency_store import InMemoryIdempotencyStore
 from graph_agent_automated.infrastructure.runtime.job_queue import InMemoryJobQueue
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
@@ -31,6 +32,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 }
 
 JOB_QUEUE = InMemoryJobQueue()
+IDEMPOTENCY_STORE = InMemoryIdempotencyStore()
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,10 @@ def get_service(session: Session = Depends(get_db_session)) -> AgentOptimization
 
 def get_job_queue() -> InMemoryJobQueue:
     return JOB_QUEUE
+
+
+def get_idempotency_store() -> InMemoryIdempotencyStore:
+    return IDEMPOTENCY_STORE
 
 
 def get_auth_context(

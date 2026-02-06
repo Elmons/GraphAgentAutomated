@@ -84,7 +84,9 @@
 - 状态：`[~]` 长任务队列化（异步 optimize/parity）  
   - 已完成：异步提交接口（`/optimize/async`、`/benchmark/manual-parity/async`）与作业状态查询（`/jobs/{job_id}`）。
   - 未完成：持久化队列与跨进程 worker（当前为进程内队列）。
-- 状态：`[ ]` 幂等键与去重机制  
+- 状态：`[~]` 幂等键与去重机制  
+  - 已完成：`Idempotency-Key` 已接入 `optimize/manual-parity` 的同步与异步提交接口，支持重放去重。
+  - 未完成：持久化幂等存储与过期回收策略（当前为进程内存储）。
 - 状态：`[ ]` 结构化日志 + 指标 + 告警（延迟/错误率/成本/parity rate）  
 - 状态：`[ ]` artifact 生命周期管理（清理策略/归档策略）
 

@@ -64,6 +64,8 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 - `X-API-Key: <key>`
 - `Authorization: Bearer <jwt>`
 
+所有写请求（`optimize` / `manual-parity` 及其 async 接口）支持 `Idempotency-Key` 请求头，用于重试去重。
+
 可选 `profile`：
 
 - `baseline_static_prompt_only`
@@ -106,6 +108,7 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 - `GET /v1/agents/jobs/{job_id}`
 
 提交接口返回 `202` 和 `job_id`，状态查询返回 `queued/running/succeeded/failed`。
+异步提交接口同样支持 `Idempotency-Key`，重复提交会返回同一 `job_id`。
 
 ## 配置
 

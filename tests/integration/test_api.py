@@ -528,3 +528,74 @@ def test_async_job_status_is_tenant_scoped(secured_client: TestClient) -> None:
         headers={"X-API-Key": "tenant-b-admin-key"},
     )
     assert forbidden_resp.status_code == 404
+
+
+def test_optimize_idempotency_key_replays_without_new_version(secured_client: TestClient) -> None:
+    headers = {
+        "X-API-Key": "tenant-a-admin-key",
+        "Idempotency-Key": "idem-optimize-1",
+    }
+    payload = {
+        "agent_name": "idem-agent",
+        "task_desc": "图查询任务",
+        "dataset_size": 8,
+        "profile": "full_system",
+        "seed": 7,
+    }
+
+    first = secured_client.post("/v1/agents/optimize", json=payload, headers=headers)
+    second = secured_client.post("/v1/agents/optimize", json=payload, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["run_id"] == second.json()["run_id"]
+    assert first.json()["version"] == second.json()["version"]
+
+    versions_resp = secured_client.get("/v1/agents/idem-agent/versions", headers=headers)
+    assert versions_resp.status_code == 200
+    assert len(versions_resp.json()) == 1
+
+
+def test_optimize_async_idempotency_key_replays_same_job(secured_client: TestClient) -> None:
+    headers = {
+        "X-API-Key": "tenant-a-admin-key",
+        "Idempotency-Key": "idem-async-optimize-1",
+    }
+    payload = {
+        "agent_name": "idem-async-agent",
+        "task_desc": "图查询任务",
+        "dataset_size": 8,
+    }
+
+    first = secured_client.post("/v1/agents/optimize/async", json=payload, headers=headers)
+    second = secured_client.post("/v1/agents/optimize/async", json=payload, headers=headers)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    first_job_id = first.json()["job_id"]
+    second_job_id = second.json()["job_id"]
+    assert first_job_id == second_job_id
+
+    completed = _wait_for_job_completion(secured_client, job_id=first_job_id, headers=headers)
+    assert completed["status"] == "succeeded"
+
+    versions_resp = secured_client.get("/v1/agents/idem-async-agent/versions", headers=headers)
+    assert versions_resp.status_code == 200
+    assert len(versions_resp.json()) == 1
+
+
+def test_empty_idempotency_key_is_rejected(secured_client: TestClient) -> None:
+    resp = secured_client.post(
+        "/v1/agents/optimize",
+        json={
+            "agent_name": "idem-invalid",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+        headers={
+            "X-API-Key": "tenant-a-admin-key",
+            "Idempotency-Key": "   ",
+        },
+    )
+    assert resp.status_code == 400
+    assert "Idempotency-Key" in resp.json()["detail"]

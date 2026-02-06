@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from graph_agent_automated.api.dependencies import (
     AuthContext,
+    get_idempotency_store,
     get_job_queue,
     get_service,
     require_permission,
@@ -20,6 +21,7 @@ from graph_agent_automated.api.schemas import (
 )
 from graph_agent_automated.application.services import AgentOptimizationService
 from graph_agent_automated.domain.models import OptimizationReport
+from graph_agent_automated.infrastructure.runtime.idempotency_store import InMemoryIdempotencyStore
 from graph_agent_automated.infrastructure.runtime.job_queue import AsyncJobRecord, InMemoryJobQueue
 
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
@@ -29,25 +31,46 @@ router = APIRouter(prefix="/v1/agents", tags=["agents"])
 def optimize_agent(
     request: OptimizeRequest,
     service: AgentOptimizationService = Depends(get_service),
+    idempotency_store: InMemoryIdempotencyStore = Depends(get_idempotency_store),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(require_permission("optimize:run")),
 ) -> OptimizeResponse:
-    report = service.optimize(
-        agent_name=to_tenant_scoped_agent_name(request.agent_name, auth),
-        task_desc=request.task_desc,
-        dataset_size=request.dataset_size,
-        profile=request.profile,
-        seed=request.seed,
-    )
-    if report.registry_record is None:
-        raise HTTPException(status_code=500, detail="failed to persist version record")
+    normalized_key = _normalize_idempotency_key(idempotency_key)
+    scope = _build_idempotency_scope(auth.tenant_id, operation="optimize")
+    should_finalize_idempotency = False
+    if normalized_key is not None:
+        idempotency_state, cached_response = idempotency_store.begin(scope, normalized_key)
+        if idempotency_state == "replay":
+            return OptimizeResponse(**(cached_response or {}))
+        if idempotency_state == "in_progress":
+            raise HTTPException(status_code=409, detail="idempotent request still in progress")
+        should_finalize_idempotency = True
 
-    return OptimizeResponse(
-        **_build_optimize_response_payload(
-            report=report,
-            agent_name=request.agent_name,
-            profile=request.profile.value,
-        ),
-    )
+    try:
+        report = service.optimize(
+            agent_name=to_tenant_scoped_agent_name(request.agent_name, auth),
+            task_desc=request.task_desc,
+            dataset_size=request.dataset_size,
+            profile=request.profile,
+            seed=request.seed,
+        )
+        if report.registry_record is None:
+            raise HTTPException(status_code=500, detail="failed to persist version record")
+
+        response = OptimizeResponse(
+            **_build_optimize_response_payload(
+                report=report,
+                agent_name=request.agent_name,
+                profile=request.profile.value,
+            ),
+        )
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.complete(scope, normalized_key, response.model_dump(mode="json"))
+        return response
+    except Exception:
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.discard(scope, normalized_key)
+        raise
 
 
 @router.post("/optimize/async", response_model=AsyncJobSubmitResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -55,8 +78,21 @@ def optimize_agent_async(
     request: OptimizeRequest,
     service: AgentOptimizationService = Depends(get_service),
     job_queue: InMemoryJobQueue = Depends(get_job_queue),
+    idempotency_store: InMemoryIdempotencyStore = Depends(get_idempotency_store),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(require_permission("optimize:run")),
 ) -> AsyncJobSubmitResponse:
+    normalized_key = _normalize_idempotency_key(idempotency_key)
+    scope = _build_idempotency_scope(auth.tenant_id, operation="optimize_async")
+    should_finalize_idempotency = False
+    if normalized_key is not None:
+        idempotency_state, cached_response = idempotency_store.begin(scope, normalized_key)
+        if idempotency_state == "replay":
+            return AsyncJobSubmitResponse(**(cached_response or {}))
+        if idempotency_state == "in_progress":
+            raise HTTPException(status_code=409, detail="idempotent request still in progress")
+        should_finalize_idempotency = True
+
     tenant_scoped_name = to_tenant_scoped_agent_name(request.agent_name, auth)
     session_factory = service.build_session_factory()
 
@@ -81,14 +117,22 @@ def optimize_agent_async(
         finally:
             child_session.close()
 
-    job = job_queue.submit(
-        job_type="optimize",
-        tenant_id=auth.tenant_id,
-        agent_name=request.agent_name,
-        metadata={"profile": request.profile.value, "seed": request.seed},
-        runner=runner,
-    )
-    return _to_async_submit_response(job)
+    try:
+        job = job_queue.submit(
+            job_type="optimize",
+            tenant_id=auth.tenant_id,
+            agent_name=request.agent_name,
+            metadata={"profile": request.profile.value, "seed": request.seed},
+            runner=runner,
+        )
+        response = _to_async_submit_response(job)
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.complete(scope, normalized_key, response.model_dump(mode="json"))
+        return response
+    except Exception:
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.discard(scope, normalized_key)
+        raise
 
 
 @router.get("/{agent_name}/versions", response_model=list[VersionDTO])
@@ -133,8 +177,21 @@ def rollback_version(
 def benchmark_manual_parity(
     request: ManualParityRequest,
     service: AgentOptimizationService = Depends(get_service),
+    idempotency_store: InMemoryIdempotencyStore = Depends(get_idempotency_store),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(require_permission("parity:run")),
 ) -> ManualParityResponse:
+    normalized_key = _normalize_idempotency_key(idempotency_key)
+    scope = _build_idempotency_scope(auth.tenant_id, operation="manual_parity")
+    should_finalize_idempotency = False
+    if normalized_key is not None:
+        idempotency_state, cached_response = idempotency_store.begin(scope, normalized_key)
+        if idempotency_state == "replay":
+            return ManualParityResponse(**(cached_response or {}))
+        if idempotency_state == "in_progress":
+            raise HTTPException(status_code=409, detail="idempotent request still in progress")
+        should_finalize_idempotency = True
+
     try:
         report = service.benchmark_manual_parity(
             agent_name=to_tenant_scoped_agent_name(request.agent_name, auth),
@@ -145,22 +202,30 @@ def benchmark_manual_parity(
             seed=request.seed,
             parity_margin=request.parity_margin,
         )
+        response = ManualParityResponse(
+            run_id=report.run_id,
+            profile=report.profile,
+            split=report.split,
+            auto_score=report.auto_score,
+            manual_score=report.manual_score,
+            score_delta=report.score_delta,
+            parity_margin=report.parity_margin,
+            parity_achieved=report.parity_achieved,
+            auto_artifact_path=report.auto_artifact_path,
+            manual_blueprint_path=report.manual_blueprint_path,
+            evaluated_cases=report.evaluated_cases,
+        )
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.complete(scope, normalized_key, response.model_dump(mode="json"))
+        return response
     except ValueError as exc:
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.discard(scope, normalized_key)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return ManualParityResponse(
-        run_id=report.run_id,
-        profile=report.profile,
-        split=report.split,
-        auto_score=report.auto_score,
-        manual_score=report.manual_score,
-        score_delta=report.score_delta,
-        parity_margin=report.parity_margin,
-        parity_achieved=report.parity_achieved,
-        auto_artifact_path=report.auto_artifact_path,
-        manual_blueprint_path=report.manual_blueprint_path,
-        evaluated_cases=report.evaluated_cases,
-    )
+    except Exception:
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.discard(scope, normalized_key)
+        raise
 
 
 @router.post(
@@ -172,8 +237,21 @@ def benchmark_manual_parity_async(
     request: ManualParityRequest,
     service: AgentOptimizationService = Depends(get_service),
     job_queue: InMemoryJobQueue = Depends(get_job_queue),
+    idempotency_store: InMemoryIdempotencyStore = Depends(get_idempotency_store),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(require_permission("parity:run")),
 ) -> AsyncJobSubmitResponse:
+    normalized_key = _normalize_idempotency_key(idempotency_key)
+    scope = _build_idempotency_scope(auth.tenant_id, operation="manual_parity_async")
+    should_finalize_idempotency = False
+    if normalized_key is not None:
+        idempotency_state, cached_response = idempotency_store.begin(scope, normalized_key)
+        if idempotency_state == "replay":
+            return AsyncJobSubmitResponse(**(cached_response or {}))
+        if idempotency_state == "in_progress":
+            raise HTTPException(status_code=409, detail="idempotent request still in progress")
+        should_finalize_idempotency = True
+
     tenant_scoped_name = to_tenant_scoped_agent_name(request.agent_name, auth)
     session_factory = service.build_session_factory()
 
@@ -206,14 +284,22 @@ def benchmark_manual_parity_async(
             "evaluated_cases": report.evaluated_cases,
         }
 
-    job = job_queue.submit(
-        job_type="manual_parity",
-        tenant_id=auth.tenant_id,
-        agent_name=request.agent_name,
-        metadata={"profile": request.profile.value, "seed": request.seed},
-        runner=runner,
-    )
-    return _to_async_submit_response(job)
+    try:
+        job = job_queue.submit(
+            job_type="manual_parity",
+            tenant_id=auth.tenant_id,
+            agent_name=request.agent_name,
+            metadata={"profile": request.profile.value, "seed": request.seed},
+            runner=runner,
+        )
+        response = _to_async_submit_response(job)
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.complete(scope, normalized_key, response.model_dump(mode="json"))
+        return response
+    except Exception:
+        if should_finalize_idempotency and normalized_key is not None:
+            idempotency_store.discard(scope, normalized_key)
+        raise
 
 
 @router.get("/jobs/{job_id}", response_model=AsyncJobStatusResponse)
@@ -279,3 +365,16 @@ def _to_async_status_response(job: AsyncJobRecord) -> AsyncJobStatusResponse:
         error=job.error,
         metadata=job.metadata,
     )
+
+
+def _normalize_idempotency_key(idempotency_key: str | None) -> str | None:
+    if idempotency_key is None:
+        return None
+    normalized = idempotency_key.strip()
+    if normalized:
+        return normalized
+    raise HTTPException(status_code=400, detail="Idempotency-Key must not be empty")
+
+
+def _build_idempotency_scope(tenant_id: str, operation: str) -> str:
+    return f"{tenant_id}:{operation}"
