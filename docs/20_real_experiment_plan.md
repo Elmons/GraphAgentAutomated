@@ -61,8 +61,10 @@
 - `scripts/analyze_experiment_arms.py`：对 `full_system` 与目标 arm 做配对统计对照。
 - `artifacts/experiments/<date>/`：原始 run 与聚合统计。
 - `scripts/run_manual_parity_matrix.py`：执行 `full_system` vs `manual` 对标评测（冻结任务簇）。
+- 推荐真实 runtime 参数：`--async-submit --fail-on-errors`（长任务不受同步请求超时影响）。
 - `artifacts/manual_parity/<date>/parity_stats.json`：mean delta + bootstrap CI + Wilcoxon + Cliff's delta。
 - `artifacts/manual_parity/<date>/failure_taxonomy_summary.json`：失败类型占比与严重度。
+- `artifacts/manual_parity/<date>/errors.json`：失败样本与错误详情（支持续跑排障）。
 - `scripts/evaluate_research_gate.py`：基于固定 gate 规则给出 PASS/FAIL。
 - `artifacts/manual_parity/<date>/gate_report.json`：各 gate check 的 observed/threshold 与结论。
 

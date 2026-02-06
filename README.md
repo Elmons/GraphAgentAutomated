@@ -48,6 +48,8 @@ uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 
 uv run python scripts/analyze_experiment_arms.py --records-path artifacts/experiments/<date>/records.json --baseline-arm full_system --target-arms idea_failure_aware_mutation
 # parity 前请确保服务端 MANUAL_BLUEPRINTS_DIR 与 manual-blueprints-root 一致
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 3
+# 真实 runtime 建议异步模式（支持轮询、失败继续、断点续跑）
+uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 5 --async-submit --fail-on-errors
 uv run python scripts/evaluate_research_gate.py --records-path artifacts/manual_parity/<date>/records.json --gate-spec-path docs/benchmarks/research_gate_v1.json
 uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per-agent 10 --dry-run
 # 如需走代理：追加 --trust-env
@@ -121,6 +123,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 
 - `parity_stats.json`（mean delta、bootstrap CI、Wilcoxon、Cliff's delta）
 - `failure_taxonomy_summary.json`（失败类型与严重度聚合）
+- `errors.json`（失败请求与异常详情，便于断点续跑）
 - `gate_report.json`（研究停机准则 PASS/FAIL 及各 check 观测值）
 
 ## 异步任务接口
