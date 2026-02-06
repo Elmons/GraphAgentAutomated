@@ -97,6 +97,16 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 返回 `parity_achieved=true` 表示自动方案在容差 `parity_margin` 内达到人工设计水平。
 `manual_blueprint_path` 必须位于 `MANUAL_BLUEPRINTS_DIR`（默认 `./artifacts/manual_blueprints`）目录下。
 
+## 异步任务接口
+
+为避免同步请求阻塞，支持异步提交与轮询：
+
+- `POST /v1/agents/optimize/async`
+- `POST /v1/agents/benchmark/manual-parity/async`
+- `GET /v1/agents/jobs/{job_id}`
+
+提交接口返回 `202` 和 `job_id`，状态查询返回 `queued/running/succeeded/failed`。
+
 ## 配置
 
 使用 `pydantic_settings` 统一管理环境变量，见 `.env.example`。

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from graph_agent_automated.application.services import AgentOptimizationService
 from graph_agent_automated.core.config import Settings, get_settings
 from graph_agent_automated.core.database import get_db
+from graph_agent_automated.infrastructure.runtime.job_queue import InMemoryJobQueue
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "viewer": {"versions:read"},
@@ -28,6 +29,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "parity:run",
     },
 }
+
+JOB_QUEUE = InMemoryJobQueue()
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,10 @@ def get_db_session() -> Generator[Session, None, None]:
 
 def get_service(session: Session = Depends(get_db_session)) -> AgentOptimizationService:
     return AgentOptimizationService(session=session, settings=get_settings())
+
+
+def get_job_queue() -> InMemoryJobQueue:
+    return JOB_QUEUE
 
 
 def get_auth_context(

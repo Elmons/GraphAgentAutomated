@@ -61,6 +61,30 @@ class ManualParityResponse(BaseModel):
     evaluated_cases: int
 
 
+class AsyncJobSubmitResponse(BaseModel):
+    job_id: str
+    job_type: str
+    status: str
+    tenant_id: str
+    agent_name: str
+    created_at: str
+    updated_at: str
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class AsyncJobStatusResponse(BaseModel):
+    job_id: str
+    job_type: str
+    status: str
+    tenant_id: str
+    agent_name: str
+    created_at: str
+    updated_at: str
+    result: dict[str, object] | None = None
+    error: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
 class MessageResponse(BaseModel):
     message: str
 

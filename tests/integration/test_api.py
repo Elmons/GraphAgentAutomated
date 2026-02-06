@@ -156,6 +156,23 @@ def _issue_jwt(
     return f"{header_segment}.{claims_segment}.{signature_segment}"
 
 
+def _wait_for_job_completion(
+    client: TestClient,
+    job_id: str,
+    headers: dict[str, str],
+    timeout_seconds: float = 10.0,
+) -> dict[str, object]:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        status_resp = client.get(f"/v1/agents/jobs/{job_id}", headers=headers)
+        assert status_resp.status_code == 200
+        payload = status_resp.json()
+        if payload["status"] in {"succeeded", "failed"}:
+            return payload
+        time.sleep(0.05)
+    raise AssertionError(f"async job {job_id} did not complete within timeout")
+
+
 def test_optimize_and_version_lifecycle(client: TestClient) -> None:
     optimize_resp = client.post(
         "/v1/agents/optimize",
@@ -456,3 +473,58 @@ def test_jwt_invalid_signature_rejected(secured_client: TestClient) -> None:
 
     assert resp.status_code == 401
     assert "invalid jwt signature" in resp.json()["detail"]
+
+
+def test_optimize_async_job_lifecycle(secured_client: TestClient) -> None:
+    headers = {"X-API-Key": "tenant-a-admin-key"}
+    submit_resp = secured_client.post(
+        "/v1/agents/optimize/async",
+        json={
+            "agent_name": "async-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+            "profile": "full_system",
+            "seed": 7,
+        },
+        headers=headers,
+    )
+    assert submit_resp.status_code == 202
+    submit_payload = submit_resp.json()
+    assert submit_payload["job_type"] == "optimize"
+    assert submit_payload["status"] in {"queued", "running"}
+
+    completed = _wait_for_job_completion(
+        secured_client,
+        job_id=submit_payload["job_id"],
+        headers=headers,
+    )
+    assert completed["status"] == "succeeded"
+    result = completed["result"]
+    assert result is not None
+    assert result["agent_name"] == "async-agent"
+    assert result["version"] == 1
+    assert str(result["run_id"]).startswith("run-")
+
+    versions_resp = secured_client.get("/v1/agents/async-agent/versions", headers=headers)
+    assert versions_resp.status_code == 200
+    assert len(versions_resp.json()) == 1
+
+
+def test_async_job_status_is_tenant_scoped(secured_client: TestClient) -> None:
+    submit_resp = secured_client.post(
+        "/v1/agents/optimize/async",
+        json={
+            "agent_name": "tenant-scoped-job-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+        headers={"X-API-Key": "tenant-a-admin-key"},
+    )
+    assert submit_resp.status_code == 202
+    job_id = submit_resp.json()["job_id"]
+
+    forbidden_resp = secured_client.get(
+        f"/v1/agents/jobs/{job_id}",
+        headers={"X-API-Key": "tenant-b-admin-key"},
+    )
+    assert forbidden_resp.status_code == 404

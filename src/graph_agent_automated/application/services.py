@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from graph_agent_automated.application.profiles import resolve_optimization_knobs
 from graph_agent_automated.core.config import Settings, get_settings
@@ -56,6 +56,10 @@ class AgentOptimizationService:
     def __init__(self, session: Session, settings: Settings | None = None):
         self._session = session
         self._settings = settings or get_settings()
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings
 
     def optimize(
         self,
@@ -291,6 +295,10 @@ class AgentOptimizationService:
         row = repo.update_lifecycle(agent_name, version, AgentLifecycle.DEPLOYED)
         self._session.commit()
         return to_version_dict(row)
+
+    def build_session_factory(self) -> sessionmaker[Session]:
+        bind = self._session.get_bind()
+        return sessionmaker(bind=bind, class_=Session, autocommit=False, autoflush=False)
 
     def _write_report_artifacts(
         self,
