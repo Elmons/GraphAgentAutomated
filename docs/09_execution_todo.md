@@ -79,7 +79,9 @@
 
 ## P1 生产化基础
 
-- 状态：`[ ]` 鉴权与多租户隔离（API key/JWT + RBAC）  
+- 状态：`[~]` 鉴权与多租户隔离（API key/JWT + RBAC）  
+  - 已完成：API key 鉴权、RBAC、tenant 级 agent 隔离。
+  - 未完成：JWT 令牌流与密钥轮换策略。
 - 状态：`[ ]` 长任务队列化（异步 optimize/parity）  
 - 状态：`[ ]` 幂等键与去重机制  
 - 状态：`[ ]` 结构化日志 + 指标 + 告警（延迟/错误率/成本/parity rate）  

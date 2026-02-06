@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,56 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("JUDGE_BACKEND", "mock")
     monkeypatch.setenv("ARTIFACTS_DIR", str(artifacts_dir))
     monkeypatch.setenv("MANUAL_BLUEPRINTS_DIR", str(manual_blueprints_dir))
+    get_settings.cache_clear()
+
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    local_session = sessionmaker(bind=engine, class_=Session, autocommit=False, autoflush=False)
+
+    app = create_app()
+
+    def override_service():
+        session = local_session()
+        try:
+            yield AgentOptimizationService(session=session, settings=get_settings())
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = override_service
+
+    with TestClient(app) as c:
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def secured_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    db_path = tmp_path / "test_auth.db"
+    artifacts_dir = tmp_path / "artifacts_auth"
+    manual_blueprints_dir = tmp_path / "manual_blueprints_auth"
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("CHAT2GRAPH_RUNTIME_MODE", "mock")
+    monkeypatch.setenv("JUDGE_BACKEND", "mock")
+    monkeypatch.setenv("ARTIFACTS_DIR", str(artifacts_dir))
+    monkeypatch.setenv("MANUAL_BLUEPRINTS_DIR", str(manual_blueprints_dir))
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv(
+        "AUTH_API_KEYS_JSON",
+        json.dumps(
+            {
+                "tenant-a-admin-key": {"tenant_id": "tenant-a", "role": "admin"},
+                "tenant-a-viewer-key": {"tenant_id": "tenant-a", "role": "viewer"},
+                "tenant-b-admin-key": {"tenant_id": "tenant-b", "role": "admin"},
+            },
+            ensure_ascii=False,
+        ),
+    )
+    monkeypatch.setenv("AUTH_DEFAULT_TENANT_ID", "default")
     get_settings.cache_clear()
 
     engine = create_engine(
@@ -212,3 +263,70 @@ def test_manual_parity_invalid_blueprint_does_not_persist(client: TestClient, tm
     versions_resp = client.get("/v1/agents/manual-parity-invalid/versions")
     assert versions_resp.status_code == 200
     assert versions_resp.json() == []
+
+
+def test_auth_enabled_requires_api_key(secured_client: TestClient) -> None:
+    resp = secured_client.post(
+        "/v1/agents/optimize",
+        json={
+            "agent_name": "auth-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+    )
+    assert resp.status_code == 401
+    assert "X-API-Key" in resp.json()["detail"]
+
+
+def test_viewer_role_cannot_optimize(secured_client: TestClient) -> None:
+    resp = secured_client.post(
+        "/v1/agents/optimize",
+        json={
+            "agent_name": "viewer-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+        headers={"X-API-Key": "tenant-a-viewer-key"},
+    )
+    assert resp.status_code == 403
+    assert "permission denied" in resp.json()["detail"]
+
+
+def test_tenant_isolation_with_same_agent_name(secured_client: TestClient) -> None:
+    payload = {
+        "agent_name": "shared-agent",
+        "task_desc": "图查询任务",
+        "dataset_size": 8,
+    }
+
+    optimize_a = secured_client.post(
+        "/v1/agents/optimize",
+        json=payload,
+        headers={"X-API-Key": "tenant-a-admin-key"},
+    )
+    optimize_b = secured_client.post(
+        "/v1/agents/optimize",
+        json=payload,
+        headers={"X-API-Key": "tenant-b-admin-key"},
+    )
+
+    assert optimize_a.status_code == 200
+    assert optimize_b.status_code == 200
+    assert optimize_a.json()["version"] == 1
+    assert optimize_b.json()["version"] == 1
+
+    versions_a = secured_client.get(
+        "/v1/agents/shared-agent/versions",
+        headers={"X-API-Key": "tenant-a-admin-key"},
+    )
+    versions_b = secured_client.get(
+        "/v1/agents/shared-agent/versions",
+        headers={"X-API-Key": "tenant-b-admin-key"},
+    )
+
+    assert versions_a.status_code == 200
+    assert versions_b.status_code == 200
+    assert len(versions_a.json()) == 1
+    assert len(versions_b.json()) == 1
+    assert versions_a.json()[0]["version"] == 1
+    assert versions_b.json()[0]["version"] == 1

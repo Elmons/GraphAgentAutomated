@@ -59,6 +59,8 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 }
 ```
 
+当 `AUTH_ENABLED=true` 时，请在请求头中携带 `X-API-Key`。
+
 可选 `profile`：
 
 - `baseline_static_prompt_only`
@@ -95,3 +97,18 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 ## 配置
 
 使用 `pydantic_settings` 统一管理环境变量，见 `.env.example`。
+
+鉴权与租户隔离（API key + RBAC）：
+
+- `AUTH_ENABLED=true` 开启鉴权（默认 `false`）。
+- `AUTH_API_KEYS_JSON` 使用 JSON 对象配置 API key，例如：
+
+```json
+{
+  "tenant-a-admin-key": {"tenant_id": "tenant-a", "role": "admin"},
+  "tenant-a-viewer-key": {"tenant_id": "tenant-a", "role": "viewer"},
+  "tenant-b-operator-key": {"tenant_id": "tenant-b", "role": "operator"}
+}
+```
+
+不同 `tenant_id` 的请求会自动进行 agent 数据隔离（同名 agent 互不干扰）。

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from graph_agent_automated.api.dependencies import get_service
+from graph_agent_automated.api.dependencies import (
+    AuthContext,
+    get_service,
+    require_permission,
+    to_tenant_scoped_agent_name,
+)
 from graph_agent_automated.api.schemas import (
     ManualParityRequest,
     ManualParityResponse,
@@ -19,9 +24,10 @@ router = APIRouter(prefix="/v1/agents", tags=["agents"])
 def optimize_agent(
     request: OptimizeRequest,
     service: AgentOptimizationService = Depends(get_service),
+    auth: AuthContext = Depends(require_permission("optimize:run")),
 ) -> OptimizeResponse:
     report = service.optimize(
-        agent_name=request.agent_name,
+        agent_name=to_tenant_scoped_agent_name(request.agent_name, auth),
         task_desc=request.task_desc,
         dataset_size=request.dataset_size,
         profile=request.profile,
@@ -52,8 +58,9 @@ def optimize_agent(
 def list_versions(
     agent_name: str,
     service: AgentOptimizationService = Depends(get_service),
+    auth: AuthContext = Depends(require_permission("versions:read")),
 ) -> list[VersionDTO]:
-    rows = service.list_versions(agent_name)
+    rows = service.list_versions(to_tenant_scoped_agent_name(agent_name, auth))
     return [VersionDTO(**row) for row in rows]
 
 
@@ -62,9 +69,10 @@ def deploy_version(
     agent_name: str,
     version: int,
     service: AgentOptimizationService = Depends(get_service),
+    auth: AuthContext = Depends(require_permission("versions:deploy")),
 ) -> VersionDTO:
     try:
-        row = service.deploy(agent_name, version)
+        row = service.deploy(to_tenant_scoped_agent_name(agent_name, auth), version)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return VersionDTO(**row)
@@ -75,9 +83,10 @@ def rollback_version(
     agent_name: str,
     version: int,
     service: AgentOptimizationService = Depends(get_service),
+    auth: AuthContext = Depends(require_permission("versions:rollback")),
 ) -> VersionDTO:
     try:
-        row = service.rollback(agent_name, version)
+        row = service.rollback(to_tenant_scoped_agent_name(agent_name, auth), version)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return VersionDTO(**row)
@@ -87,10 +96,11 @@ def rollback_version(
 def benchmark_manual_parity(
     request: ManualParityRequest,
     service: AgentOptimizationService = Depends(get_service),
+    auth: AuthContext = Depends(require_permission("parity:run")),
 ) -> ManualParityResponse:
     try:
         report = service.benchmark_manual_parity(
-            agent_name=request.agent_name,
+            agent_name=to_tenant_scoped_agent_name(request.agent_name, auth),
             task_desc=request.task_desc,
             manual_blueprint_path=request.manual_blueprint_path,
             dataset_size=request.dataset_size,

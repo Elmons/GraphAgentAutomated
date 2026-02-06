@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     judge_backend: str = "mock"  # mock|openai
     judge_model: str = "gpt-4.1-mini"
+    auth_enabled: bool = False
+    auth_api_keys_json: str = "{}"
+    auth_default_tenant_id: str = "default"
 
     default_dataset_size: int = Field(default=12, ge=6, le=30)
     max_search_rounds: int = Field(default=10, ge=1, le=100)
