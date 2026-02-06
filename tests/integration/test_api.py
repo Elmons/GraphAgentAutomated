@@ -278,6 +278,10 @@ def test_manual_parity_endpoint(client: TestClient, tmp_path: Path) -> None:
     assert payload["split"] in {"train", "val", "test"}
     assert "auto_score" in payload
     assert "manual_score" in payload
+    assert "auto_mean_latency_ms" in payload
+    assert "manual_mean_latency_ms" in payload
+    assert "auto_mean_token_cost" in payload
+    assert "manual_mean_token_cost" in payload
     assert "parity_achieved" in payload
     assert payload["evaluated_cases"] > 0
     assert isinstance(payload["failure_taxonomy"], dict)

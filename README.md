@@ -30,6 +30,7 @@
 19. `docs/22_top_conf_idea_rcds.md` 顶会 idea 与落地实现
 20. `docs/23_production_readiness.md` 生产化路线与门槛
 21. `docs/24_codex_session_guide.md` 新会话 Codex 强制指引
+22. `docs/25_research_gate.md` 研究停机准则与 gate 规范
 
 新会话入口：先读 `docs/09_execution_todo.md` 与 `docs/24_codex_session_guide.md`。
 
@@ -43,6 +44,7 @@ uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 5 --include-ablations
 # parity 前请确保服务端 MANUAL_BLUEPRINTS_DIR 与 manual-blueprints-root 一致
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 3
+uv run python scripts/evaluate_research_gate.py --records-path artifacts/manual_parity/<date>/records.json --gate-spec-path docs/benchmarks/research_gate_v1.json
 uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per-agent 10 --dry-run
 # 如需走代理：追加 --trust-env
 ```
@@ -101,6 +103,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 返回 `parity_achieved=true` 表示自动方案在容差 `parity_margin` 内达到人工设计水平。
 `manual_blueprint_path` 必须位于 `MANUAL_BLUEPRINTS_DIR`（默认 `./artifacts/manual_blueprints`）目录下。
 响应中包含 `failure_taxonomy`（失败类型占比与严重度）。
+响应中包含自动/人工两侧的均值延迟与 token 成本字段。
 
 研究基准冻结文件：
 
@@ -113,6 +116,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 
 - `parity_stats.json`（mean delta、bootstrap CI、Wilcoxon、Cliff's delta）
 - `failure_taxonomy_summary.json`（失败类型与严重度聚合）
+- `gate_report.json`（研究停机准则 PASS/FAIL 及各 check 观测值）
 
 ## 异步任务接口
 

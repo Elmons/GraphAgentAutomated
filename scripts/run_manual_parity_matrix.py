@@ -107,6 +107,10 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "avg_score_delta": avg_delta,
                 "avg_auto_score": mean([float(row["auto_score"]) for row in rows]),
                 "avg_manual_score": mean([float(row["manual_score"]) for row in rows]),
+                "avg_auto_latency_ms": mean([float(row["auto_mean_latency_ms"]) for row in rows]),
+                "avg_manual_latency_ms": mean([float(row["manual_mean_latency_ms"]) for row in rows]),
+                "avg_auto_token_cost": mean([float(row["auto_mean_token_cost"]) for row in rows]),
+                "avg_manual_token_cost": mean([float(row["manual_mean_token_cost"]) for row in rows]),
             }
         )
     return summary
@@ -143,6 +147,10 @@ def build_parity_statistics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "parity_rate": parity_rate,
         "mean_score_delta": mean(deltas),
         "mean_score_delta_ci95": [ci_lo, ci_hi],
+        "mean_auto_latency_ms": mean([float(row["auto_mean_latency_ms"]) for row in records]),
+        "mean_manual_latency_ms": mean([float(row["manual_mean_latency_ms"]) for row in records]),
+        "mean_auto_token_cost": mean([float(row["auto_mean_token_cost"]) for row in records]),
+        "mean_manual_token_cost": mean([float(row["manual_mean_token_cost"]) for row in records]),
         "wilcoxon": wilcoxon,
         "cliffs_delta": {"value": cliffs_value, "magnitude": cliffs_magnitude},
     }

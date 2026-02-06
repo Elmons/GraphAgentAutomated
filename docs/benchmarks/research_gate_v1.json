@@ -1,0 +1,17 @@
+{
+  "gate_id": "research_gate_v1",
+  "version": "1.0.0",
+  "criteria": {
+    "min_runs": 24,
+    "min_parity_rate": 0.7,
+    "min_mean_score_delta": -0.02,
+    "min_ci95_lower_bound": -0.05,
+    "max_delta_std": 0.16,
+    "min_p10_score_delta": -0.1,
+    "max_mean_auto_latency_ms": 30000.0,
+    "max_mean_auto_token_cost": 0.12,
+    "max_failure_severe_ratio": 0.2,
+    "require_wilcoxon_significance": false,
+    "wilcoxon_alpha": 0.05
+  }
+}

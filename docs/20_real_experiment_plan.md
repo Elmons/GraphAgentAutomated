@@ -58,6 +58,8 @@
 - `scripts/run_manual_parity_matrix.py`：执行 `full_system` vs `manual` 对标评测（冻结任务簇）。
 - `artifacts/manual_parity/<date>/parity_stats.json`：mean delta + bootstrap CI + Wilcoxon + Cliff's delta。
 - `artifacts/manual_parity/<date>/failure_taxonomy_summary.json`：失败类型占比与严重度。
+- `scripts/evaluate_research_gate.py`：基于固定 gate 规则给出 PASS/FAIL。
+- `artifacts/manual_parity/<date>/gate_report.json`：各 gate check 的 observed/threshold 与结论。
 
 ## 7. 运行门槛
 

@@ -53,6 +53,10 @@ class ManualParityResponse(BaseModel):
     split: str
     auto_score: float
     manual_score: float
+    auto_mean_latency_ms: float
+    manual_mean_latency_ms: float
+    auto_mean_token_cost: float
+    manual_mean_token_cost: float
     score_delta: float
     parity_margin: float
     parity_achieved: bool

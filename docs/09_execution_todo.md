@@ -81,8 +81,9 @@
 - 状态：`[ ]` 形成 research idea backlog（至少 3 个可证伪假设）并做小步 ablation  
 验收：每个 idea 都有“动机-机制-可证伪条件-最小实验”，至少完成 1 个 idea 的端到端实现与对照实验。
 
-- 状态：`[ ]` 明确“算法够不够”的停机准则  
-验收：定义并固化 research gate（例如 parity rate、方差、最差分位、成本约束），避免主观判断“看起来差不多”。
+- 状态：`[x]` 明确“算法够不够”的停机准则  
+  - 已完成：固化 `docs/benchmarks/research_gate_v1.json`，新增 `scripts/evaluate_research_gate.py` 与 `docs/25_research_gate.md`；gate 覆盖 parity rate、均值/CI、方差、最差分位、延迟、token 成本、severe failure 占比与可选 Wilcoxon 显著性。  
+  - 验收：定义并固化 research gate（例如 parity rate、方差、最差分位、成本约束），避免主观判断“看起来差不多”。
 
 ## R1 支撑研究可信性的工程项（次优先级）
 

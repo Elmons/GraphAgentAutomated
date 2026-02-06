@@ -248,6 +248,10 @@ class AgentOptimizationService:
 
         auto_score = auto_eval.mean_score
         manual_score = manual_eval.mean_score
+        auto_mean_latency_ms = auto_eval.mean_latency_ms
+        manual_mean_latency_ms = manual_eval.mean_latency_ms
+        auto_mean_token_cost = auto_eval.mean_token_cost
+        manual_mean_token_cost = manual_eval.mean_token_cost
         score_delta = auto_score - manual_score
         parity_achieved = auto_score + parity_margin >= manual_score
         failure_taxonomy = build_failure_taxonomy(
@@ -264,6 +268,10 @@ class AgentOptimizationService:
             "split": split,
             "auto_score": auto_score,
             "manual_score": manual_score,
+            "auto_mean_latency_ms": auto_mean_latency_ms,
+            "manual_mean_latency_ms": manual_mean_latency_ms,
+            "auto_mean_token_cost": auto_mean_token_cost,
+            "manual_mean_token_cost": manual_mean_token_cost,
             "score_delta": score_delta,
             "parity_margin": parity_margin,
             "parity_achieved": parity_achieved,
@@ -296,6 +304,10 @@ class AgentOptimizationService:
             split=split,
             auto_score=auto_score,
             manual_score=manual_score,
+            auto_mean_latency_ms=auto_mean_latency_ms,
+            manual_mean_latency_ms=manual_mean_latency_ms,
+            auto_mean_token_cost=auto_mean_token_cost,
+            manual_mean_token_cost=manual_mean_token_cost,
             score_delta=score_delta,
             parity_margin=parity_margin,
             parity_achieved=parity_achieved,
