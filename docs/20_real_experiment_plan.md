@@ -69,6 +69,7 @@
 - `artifacts/manual_parity/<date>/errors.json`：失败样本与错误详情（支持续跑排障）。
 - `scripts/evaluate_research_gate.py`：基于固定 gate 规则给出 PASS/FAIL。
 - `artifacts/manual_parity/<date>/gate_report.json`：各 gate check 的 observed/threshold 与结论。
+- `scripts/run_research_pipeline.py`：一键串联矩阵/对照/parity/failure/gate，并输出 pipeline 报告。
 
 ## 7. 运行门槛
 

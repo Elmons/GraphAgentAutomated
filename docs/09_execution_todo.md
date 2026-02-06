@@ -71,6 +71,7 @@
 - 状态：`[~]` 跑通真实 runtime + 真实 judge 的 parity 主实验  
   - 已完成：`scripts/run_manual_parity_matrix.py` 增加统计显著性输出（`parity_stats.json`：bootstrap CI / Wilcoxon / Cliff's delta）与失败分型聚合输出（`failure_taxonomy_summary.json`）。  
   - 已完成：parity matrix 支持 `--async-submit` 轮询模式、`errors.json` 失败记录、`--resume-records-path` 断点续跑、可选鉴权头（API key/Bearer）与幂等键。  
+  - 已完成：新增 `scripts/run_research_pipeline.py`，可一键编排矩阵->对照->parity->failure->gate 并生成 pipeline 报告。  
   - 未完成：在真实 runtime + 真实 judge 环境下跑完冻结任务簇多 seed 主实验并沉淀最终工件。  
   - 验收：`full_system` vs `manual` 在冻结任务集上完成多 seed 评测，输出可复现实验工件与统计显著性。
 
