@@ -1,0 +1,46 @@
+app:
+  name: research-analytics-manual
+  desc: Analytics-focused manual blueprint for frozen benchmark tasks.
+tools:
+  - name: SchemaGetter
+    type: LOCAL_TOOL
+  - name: CypherExecutor
+    type: LOCAL_TOOL
+  - name: PageRankExecutor
+    type: LOCAL_TOOL
+actions:
+  - name: use_schemagetter
+    desc: read schema and candidate graph slices
+    tools:
+      - name: SchemaGetter
+  - name: use_cypherexecutor
+    desc: collect subgraph for analytics
+    tools:
+      - name: CypherExecutor
+  - name: use_pagerankexecutor
+    desc: run graph ranking analytics
+    tools:
+      - name: PageRankExecutor
+experts:
+  - profile:
+      name: AnalyticsManualExpert
+      desc: compute and interpret graph signals
+    workflow:
+      - - instruction: Build analytics plan with metrics and candidate nodes.
+          output_schema: analytics_plan: str
+          actions:
+            - name: use_schemagetter
+            - name: use_cypherexecutor
+        - instruction: Execute graph analytics and justify ranking outputs.
+          output_schema: final_answer: str
+          actions:
+            - name: use_pagerankexecutor
+leader:
+  actions:
+    - name: use_schemagetter
+    - name: use_pagerankexecutor
+env:
+  topology: router_parallel
+  meta:
+    source: research-benchmark-v1
+    category: analytics

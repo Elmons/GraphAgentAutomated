@@ -13,6 +13,11 @@ from typing import Any
 
 import httpx
 
+from graph_agent_automated.infrastructure.runtime.research_benchmark import (
+    BenchmarkTaskSpec,
+    load_research_benchmark,
+)
+
 
 @dataclass(frozen=True)
 class ExperimentArm:
@@ -40,13 +45,6 @@ ABLATION_ARMS = [
     ),
 ]
 
-DEFAULT_TASKS = [
-    "Find risky transfer chains with graph query and explain evidence",
-    "Run graph analytics to rank influential accounts and justify reasoning",
-    "Design schema evolution and validation plan for new relationship types",
-]
-
-
 def bootstrap_ci(values: list[float], n_resample: int = 2000, alpha: float = 0.05) -> tuple[float, float]:
     if not values:
         return (0.0, 0.0)
@@ -64,14 +62,14 @@ def bootstrap_ci(values: list[float], n_resample: int = 2000, alpha: float = 0.0
 def run_arm(
     client: httpx.Client,
     arm: ExperimentArm,
-    task_desc: str,
+    task: BenchmarkTaskSpec,
     seed: int,
     prefix: str,
 ) -> dict[str, Any]:
     agent_name = f"{prefix}-{arm.name}-s{seed}"
     payload = {
         "agent_name": agent_name,
-        "task_desc": task_desc,
+        "task_desc": task.task_desc,
         "dataset_size": arm.dataset_size,
         "profile": arm.profile,
         "seed": seed,
@@ -82,7 +80,9 @@ def run_arm(
     return {
         "arm": arm.name,
         "profile": arm.profile,
-        "task_desc": task_desc,
+        "task_id": task.task_id,
+        "task_category": task.category,
+        "task_desc": task.task_desc,
         "seed": seed,
         "agent_name": agent_name,
         "run_id": body.get("run_id"),
@@ -116,7 +116,17 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run experiment matrix via GraphAgentAutomated API")
     parser.add_argument("--base-url", default="http://127.0.0.1:8008", help="API base URL")
-    parser.add_argument("--seeds", type=int, default=3, help="Number of seeds per task and arm")
+    parser.add_argument(
+        "--benchmark-path",
+        default="docs/benchmarks/research_benchmark_v1.json",
+        help="Frozen benchmark specification JSON path",
+    )
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        default=None,
+        help="Optional override for seed count per task/arm; default uses benchmark default_seeds",
+    )
     parser.add_argument(
         "--output-dir",
         default="artifacts/experiments",
@@ -147,18 +157,21 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     records: list[dict[str, Any]] = []
+    benchmark = load_research_benchmark(args.benchmark_path)
+    seeds = list(range(1, args.seeds + 1)) if args.seeds is not None else list(benchmark.default_seeds)
+    seeds_source = "cli_count" if args.seeds is not None else "benchmark_default_seeds"
     arms = list(BASELINE_ARMS)
     if args.include_ablations:
         arms.extend(ABLATION_ARMS)
 
     with httpx.Client(base_url=args.base_url, trust_env=args.trust_env) as client:
-        for task in DEFAULT_TASKS:
+        for task in benchmark.task_items:
             for arm in arms:
-                for seed in range(1, args.seeds + 1):
+                for seed in seeds:
                     row = run_arm(client, arm, task, seed, args.prefix)
                     records.append(row)
                     print(
-                        f"[ok] task={task[:36]} arm={arm.name} "
+                        f"[ok] task={task.task_id} arm={arm.name} "
                         f"profile={arm.profile} seed={seed} test={row['test_score']:.4f}"
                     )
 
@@ -187,9 +200,21 @@ def main() -> None:
             {
                 "timestamp": timestamp,
                 "base_url": args.base_url,
-                "seeds": args.seeds,
+                "benchmark_path": str(Path(args.benchmark_path).expanduser().resolve()),
+                "benchmark_id": benchmark.benchmark_id,
+                "benchmark_version": benchmark.version,
+                "seeds": seeds,
+                "seeds_source": seeds_source,
                 "arms": [asdict(arm) for arm in arms],
-                "tasks": DEFAULT_TASKS,
+                "tasks": [
+                    {
+                        "task_id": task.task_id,
+                        "category": task.category,
+                        "task_desc": task.task_desc,
+                        "manual_blueprint": task.manual_blueprint,
+                    }
+                    for task in benchmark.task_items
+                ],
                 "include_ablations": args.include_ablations,
                 "trust_env": args.trust_env,
             },

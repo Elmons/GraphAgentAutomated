@@ -1,0 +1,39 @@
+app:
+  name: research-query-manual
+  desc: Query-focused manual blueprint for frozen benchmark tasks.
+tools:
+  - name: SchemaGetter
+    type: LOCAL_TOOL
+  - name: CypherExecutor
+    type: LOCAL_TOOL
+actions:
+  - name: use_schemagetter
+    desc: read schema before query planning
+    tools:
+      - name: SchemaGetter
+  - name: use_cypherexecutor
+    desc: execute evidence query
+    tools:
+      - name: CypherExecutor
+experts:
+  - profile:
+      name: QueryManualExpert
+      desc: retrieve and verify query evidence
+    workflow:
+      - - instruction: Plan query predicates from task intent and schema.
+          output_schema: query_plan: str
+          actions:
+            - name: use_schemagetter
+        - instruction: Execute Cypher and return evidence paths with explanation.
+          output_schema: final_answer: str
+          actions:
+            - name: use_cypherexecutor
+leader:
+  actions:
+    - name: use_schemagetter
+    - name: use_cypherexecutor
+env:
+  topology: planner_worker_reviewer
+  meta:
+    source: research-benchmark-v1
+    category: query

@@ -1,0 +1,79 @@
+{
+  "benchmark_id": "research_benchmark_v1",
+  "version": "1.0.0",
+  "default_seeds": [1, 2, 3, 4, 5],
+  "task_items": [
+    {
+      "task_id": "query_01",
+      "category": "query",
+      "task_desc": "Find risky transfer chains and return concrete evidence paths with transaction amounts.",
+      "manual_blueprint": "query_manual.yml"
+    },
+    {
+      "task_id": "query_02",
+      "category": "query",
+      "task_desc": "Trace beneficial ownership paths across shell entities and summarize the shortest suspicious chain.",
+      "manual_blueprint": "query_manual.yml"
+    },
+    {
+      "task_id": "query_03",
+      "category": "query",
+      "task_desc": "Locate cyclical transfer loops that involve flagged accounts and explain why the loop is risky.",
+      "manual_blueprint": "query_manual.yml"
+    },
+    {
+      "task_id": "analytics_01",
+      "category": "analytics",
+      "task_desc": "Run graph analytics to rank influential accounts and justify the top-k selection.",
+      "manual_blueprint": "analytics_manual.yml"
+    },
+    {
+      "task_id": "analytics_02",
+      "category": "analytics",
+      "task_desc": "Identify bridge nodes between suspicious communities and quantify their structural importance.",
+      "manual_blueprint": "analytics_manual.yml"
+    },
+    {
+      "task_id": "analytics_03",
+      "category": "analytics",
+      "task_desc": "Detect centrality shift anomalies between two monthly graph snapshots and report key deltas.",
+      "manual_blueprint": "analytics_manual.yml"
+    },
+    {
+      "task_id": "hybrid_01",
+      "category": "hybrid",
+      "task_desc": "Retrieve suspicious transaction subgraphs and rank their risk with graph signals and textual rationale.",
+      "manual_blueprint": "hybrid_manual.yml"
+    },
+    {
+      "task_id": "hybrid_02",
+      "category": "hybrid",
+      "task_desc": "Plan a multi-step investigation that combines Cypher retrieval and PageRank-based prioritization.",
+      "manual_blueprint": "hybrid_manual.yml"
+    },
+    {
+      "task_id": "hybrid_03",
+      "category": "hybrid",
+      "task_desc": "Correlate schema hints with query outputs and analytics scores to produce a final decision report.",
+      "manual_blueprint": "hybrid_manual.yml"
+    },
+    {
+      "task_id": "schema_01",
+      "category": "schema",
+      "task_desc": "Design schema evolution for a new relationship type and provide backward-compatible migration steps.",
+      "manual_blueprint": "schema_manual.yml"
+    },
+    {
+      "task_id": "schema_02",
+      "category": "schema",
+      "task_desc": "Propose constraints and indexes to prevent duplicate edge creation and unstable query plans.",
+      "manual_blueprint": "schema_manual.yml"
+    },
+    {
+      "task_id": "schema_03",
+      "category": "schema",
+      "task_desc": "Extend ontology mapping from natural language intents to graph entities and relation candidates.",
+      "manual_blueprint": "schema_manual.yml"
+    }
+  ]
+}

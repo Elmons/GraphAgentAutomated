@@ -11,24 +11,39 @@ from typing import Any
 
 import httpx
 
-DEFAULT_TASKS = [
-    "Find risky transfer chains with graph query and explain evidence",
-    "Run graph analytics to rank influential accounts and justify reasoning",
-    "Design schema evolution and validation plan for new relationship types",
-]
+from graph_agent_automated.infrastructure.runtime.research_benchmark import (
+    BenchmarkTaskSpec,
+    load_research_benchmark,
+    resolve_manual_blueprint_path,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run manual parity benchmark via GraphAgentAutomated API")
     parser.add_argument("--base-url", default="http://127.0.0.1:8008", help="API base URL")
     parser.add_argument(
+        "--benchmark-path",
+        default="docs/benchmarks/research_benchmark_v1.json",
+        help="Frozen benchmark specification JSON path",
+    )
+    parser.add_argument(
+        "--manual-blueprints-root",
+        default="docs/manual_blueprints/research_benchmark_v1",
+        help="Root directory for benchmark manual blueprints",
+    )
+    parser.add_argument(
         "--manual-blueprint-path",
-        required=True,
-        help="Path to manual workflow yaml/json (must be under MANUAL_BLUEPRINTS_DIR on server)",
+        default="",
+        help="Optional override path for all tasks (must be under MANUAL_BLUEPRINTS_DIR on server)",
     )
     parser.add_argument("--profile", default="full_system", help="Optimization profile for auto generation")
     parser.add_argument("--dataset-size", type=int, default=12, help="Dataset size")
-    parser.add_argument("--seeds", type=int, default=3, help="Number of seeds per task")
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        default=None,
+        help="Optional override for seed count per task; default uses benchmark default_seeds",
+    )
     parser.add_argument("--parity-margin", type=float, default=0.03, help="Accepted score gap margin")
     parser.add_argument("--prefix", default="parity", help="Agent name prefix")
     parser.add_argument("--output-dir", default="artifacts/manual_parity", help="Output directory")
@@ -43,7 +58,7 @@ def parse_args() -> argparse.Namespace:
 def run_once(
     client: httpx.Client,
     agent_name: str,
-    task_desc: str,
+    task: BenchmarkTaskSpec,
     seed: int,
     manual_blueprint_path: str,
     profile: str,
@@ -52,7 +67,7 @@ def run_once(
 ) -> dict[str, Any]:
     payload = {
         "agent_name": agent_name,
-        "task_desc": task_desc,
+        "task_desc": task.task_desc,
         "manual_blueprint_path": manual_blueprint_path,
         "dataset_size": dataset_size,
         "profile": profile,
@@ -91,26 +106,43 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     records: list[dict[str, Any]] = []
+    benchmark = load_research_benchmark(args.benchmark_path)
+    seeds = list(range(1, args.seeds + 1)) if args.seeds is not None else list(benchmark.default_seeds)
+    seeds_source = "cli_count" if args.seeds is not None else "benchmark_default_seeds"
+    manual_blueprints_root = Path(args.manual_blueprints_root).expanduser().resolve()
+    override_manual_blueprint_path = args.manual_blueprint_path.strip()
+    if override_manual_blueprint_path:
+        override_path = Path(override_manual_blueprint_path).expanduser().resolve()
+        if not override_path.exists() or not override_path.is_file():
+            raise ValueError(f"manual blueprint override path not found: {override_path}")
+
     with httpx.Client(base_url=args.base_url, trust_env=args.trust_env) as client:
-        for task_idx, task_desc in enumerate(DEFAULT_TASKS, start=1):
-            for seed in range(1, args.seeds + 1):
+        for task_idx, task in enumerate(benchmark.task_items, start=1):
+            if override_manual_blueprint_path:
+                manual_blueprint_path = str(override_path)
+            else:
+                manual_blueprint_path = str(resolve_manual_blueprint_path(task, manual_blueprints_root))
+            for seed in seeds:
                 agent_name = f"{args.prefix}-t{task_idx}-s{seed}"
                 row = run_once(
                     client=client,
                     agent_name=agent_name,
-                    task_desc=task_desc,
+                    task=task,
                     seed=seed,
-                    manual_blueprint_path=args.manual_blueprint_path,
+                    manual_blueprint_path=manual_blueprint_path,
                     profile=args.profile,
                     dataset_size=args.dataset_size,
                     parity_margin=args.parity_margin,
                 )
-                row["task_desc"] = task_desc
+                row["task_id"] = task.task_id
+                row["task_category"] = task.category
+                row["task_desc"] = task.task_desc
                 row["seed"] = seed
                 row["agent_name"] = agent_name
+                row["manual_blueprint_path"] = manual_blueprint_path
                 records.append(row)
                 print(
-                    f"[ok] task={task_desc[:36]} seed={seed} "
+                    f"[ok] task={task.task_id} seed={seed} "
                     f"auto={row['auto_score']:.4f} manual={row['manual_score']:.4f} "
                     f"parity={row['parity_achieved']}"
                 )
@@ -126,12 +158,29 @@ def main() -> None:
             {
                 "timestamp": timestamp,
                 "base_url": args.base_url,
-                "manual_blueprint_path": str(Path(args.manual_blueprint_path).expanduser().resolve()),
+                "benchmark_path": str(Path(args.benchmark_path).expanduser().resolve()),
+                "benchmark_id": benchmark.benchmark_id,
+                "benchmark_version": benchmark.version,
+                "manual_blueprints_root": str(manual_blueprints_root),
+                "manual_blueprint_path_override": (
+                    str(Path(override_manual_blueprint_path).expanduser().resolve())
+                    if override_manual_blueprint_path
+                    else None
+                ),
                 "profile": args.profile,
                 "dataset_size": args.dataset_size,
-                "seeds": args.seeds,
+                "seeds": seeds,
+                "seeds_source": seeds_source,
                 "parity_margin": args.parity_margin,
-                "tasks": DEFAULT_TASKS,
+                "tasks": [
+                    {
+                        "task_id": task.task_id,
+                        "category": task.category,
+                        "task_desc": task.task_desc,
+                        "manual_blueprint": task.manual_blueprint,
+                    }
+                    for task in benchmark.task_items
+                ],
                 "trust_env": args.trust_env,
             },
             f,

@@ -1,0 +1,39 @@
+app:
+  name: research-schema-manual
+  desc: Schema-focused manual blueprint for frozen benchmark tasks.
+tools:
+  - name: SchemaGetter
+    type: LOCAL_TOOL
+  - name: KnowledgeBaseRetriever
+    type: LOCAL_TOOL
+actions:
+  - name: use_schemagetter
+    desc: inspect current graph schema and constraints
+    tools:
+      - name: SchemaGetter
+  - name: use_knowledgebaseretriever
+    desc: retrieve best-practice schema guidance
+    tools:
+      - name: KnowledgeBaseRetriever
+experts:
+  - profile:
+      name: SchemaManualExpert
+      desc: design and validate schema evolution plans
+    workflow:
+      - - instruction: Analyze schema gaps and propose migration options.
+          output_schema: schema_plan: str
+          actions:
+            - name: use_schemagetter
+        - instruction: Validate constraints/index strategy and explain trade-offs.
+          output_schema: final_answer: str
+          actions:
+            - name: use_knowledgebaseretriever
+leader:
+  actions:
+    - name: use_schemagetter
+    - name: use_knowledgebaseretriever
+env:
+  topology: linear
+  meta:
+    source: research-benchmark-v1
+    category: schema

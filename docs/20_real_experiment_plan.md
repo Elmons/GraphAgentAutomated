@@ -32,6 +32,9 @@
 - Schema/modeling
 
 每类至少 3 个任务簇，固定随机种子（例如 5 seeds）。
+冻结基准文件：`docs/benchmarks/research_benchmark_v1.json`。
+对应人工蓝图：`docs/manual_blueprints/research_benchmark_v1/`。
+固定 seeds 由 benchmark 的 `default_seeds` 提供（脚本默认使用）。
 
 ## 4. 指标
 
@@ -49,6 +52,7 @@
 ## 6. 运行工件
 
 - `scripts/run_experiment_matrix.py`：执行实验矩阵与结果汇总。
+- 推荐参数：`--benchmark-path docs/benchmarks/research_benchmark_v1.json`
 - 基线：默认运行；消融：使用 `--include-ablations`。
 - `artifacts/experiments/<date>/`：原始 run 与聚合统计。
 

@@ -39,9 +39,10 @@
 uv sync --all-extras
 uv run alembic upgrade head
 uv run pytest
-uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 3
-uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 5 --include-ablations
-uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --manual-blueprint-path /abs/path/to/artifacts/manual_blueprints/manual_workflow.yml --seeds 3
+uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 3
+uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 5 --include-ablations
+# parity 前请确保服务端 MANUAL_BLUEPRINTS_DIR 与 manual-blueprints-root 一致
+uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 3
 uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per-agent 10 --dry-run
 # 如需走代理：追加 --trust-env
 ```
@@ -99,6 +100,14 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 
 返回 `parity_achieved=true` 表示自动方案在容差 `parity_margin` 内达到人工设计水平。
 `manual_blueprint_path` 必须位于 `MANUAL_BLUEPRINTS_DIR`（默认 `./artifacts/manual_blueprints`）目录下。
+
+研究基准冻结文件：
+
+- `docs/benchmarks/research_benchmark_v1.json`
+- `docs/manual_blueprints/research_benchmark_v1/*.yml`
+- 若不显式传 `--seeds`，实验脚本将默认使用 benchmark 文件中的 `default_seeds`。
+
+运行 parity matrix 时，建议将服务端 `MANUAL_BLUEPRINTS_DIR` 指向该人工蓝图库目录。
 
 ## 异步任务接口
 

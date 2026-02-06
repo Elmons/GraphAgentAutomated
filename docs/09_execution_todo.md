@@ -65,8 +65,8 @@
 
 ## R0 研究主线（最高优先级，当前必须先做）
 
-- 状态：`[ ]` 冻结真实任务簇与人工蓝图集（Research Benchmark Freeze）  
-验收：至少 12 个任务（query/analytics/hybrid/schema 各 >= 3）+ 对应人工蓝图 + 固定 seeds + 不可随实验漂移。
+- 状态：`[x]` 冻结真实任务簇与人工蓝图集（Research Benchmark Freeze）  
+  - 已完成：`docs/benchmarks/research_benchmark_v1.json`（12 任务，四类各 >= 3，含 `default_seeds`）与 `docs/manual_blueprints/research_benchmark_v1/` 人工蓝图集；实验脚本默认读取该冻结基准并默认使用 benchmark seeds。
 
 - 状态：`[ ]` 跑通真实 runtime + 真实 judge 的 parity 主实验  
 验收：`full_system` vs `manual` 在冻结任务集上完成多 seed 评测，输出可复现实验工件与统计显著性。
