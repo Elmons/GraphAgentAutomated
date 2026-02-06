@@ -33,6 +33,8 @@
 3. 结果是什么。  
 4. 下一会话第一步是什么。  
 5. TODO 哪些条目标记变更。
+6. 本次 commit hash 与 commit message。  
+7. push 结果（目标分支与是否成功）。
 
 ## 5. 禁止语句
 
@@ -49,4 +51,7 @@ git status --short
 ./.venv/bin/pytest -q
 ./.venv/bin/ruff check src tests scripts
 ./.venv/bin/alembic upgrade head
+git add -A
+git commit -m "<scope>: <summary>"
+git push origin master
 ```

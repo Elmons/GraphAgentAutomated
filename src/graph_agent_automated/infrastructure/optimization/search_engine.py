@@ -356,15 +356,49 @@ class AFlowXSearchEngine:
             candidate.blueprint_id = self._new_blueprint_id()
             return candidate, f"tool:add({new_tool.name})"
 
-        removable = [action for action in candidate.actions if action.name not in candidate.leader_actions]
-        if removable:
-            removed = removable[-1]
-            candidate.actions = [action for action in candidate.actions if action.name != removed.name]
-            for expert in candidate.experts:
-                for operator in expert.operators:
-                    operator.actions = [name for name in operator.actions if name != removed.name]
+        leader_actions = set(candidate.leader_actions)
+        removable_tools: list[ToolSpec] = []
+        for tool in candidate.tools:
+            bound_actions = {
+                action.name
+                for action in candidate.actions
+                if tool.name in action.tools
+            }
+            if leader_actions.intersection(bound_actions):
+                continue
+            removable_tools.append(tool)
+
+        if removable_tools:
+            removed_tool = removable_tools[-1]
+            candidate.tools = [tool for tool in candidate.tools if tool.name != removed_tool.name]
+
+            removed_action_names: set[str] = set()
+            for action in candidate.actions:
+                if removed_tool.name not in action.tools:
+                    continue
+                action.tools = [tool_name for tool_name in action.tools if tool_name != removed_tool.name]
+                if not action.tools:
+                    removed_action_names.add(action.name)
+
+            if removed_action_names:
+                candidate.actions = [
+                    action for action in candidate.actions if action.name not in removed_action_names
+                ]
+                candidate.leader_actions = [
+                    action_name
+                    for action_name in candidate.leader_actions
+                    if action_name not in removed_action_names
+                ]
+                for expert in candidate.experts:
+                    for operator in expert.operators:
+                        operator.actions = [
+                            action_name
+                            for action_name in operator.actions
+                            if action_name not in removed_action_names
+                        ]
+
             candidate.blueprint_id = self._new_blueprint_id()
-            return candidate, f"tool:remove({removed.name})"
+            return candidate, f"tool:remove({removed_tool.name})"
 
         candidate.blueprint_id = self._new_blueprint_id()
         return candidate, "tool:noop"

@@ -207,6 +207,14 @@ class AgentOptimizationService:
         seed: int | None = None,
         parity_margin: float = 0.03,
     ) -> ManualParityReport:
+        resolved_manual_blueprint_path = self._resolve_manual_blueprint_path(manual_blueprint_path)
+        loader = WorkflowBlueprintLoader()
+        manual_blueprint = loader.load(
+            path=resolved_manual_blueprint_path,
+            app_name=agent_name,
+            task_desc=task_desc,
+        )
+
         auto_report = self.optimize(
             agent_name=agent_name,
             task_desc=task_desc,
@@ -226,12 +234,6 @@ class AgentOptimizationService:
         )
         evaluator = ReflectionWorkflowEvaluator(runtime=runtime, judge=judge)
 
-        loader = WorkflowBlueprintLoader()
-        manual_blueprint = loader.load(
-            path=manual_blueprint_path,
-            app_name=agent_name,
-            task_desc=task_desc,
-        )
         split, cases = self._select_parity_split(auto_report)
         manual_eval = evaluator.evaluate(manual_blueprint, cases, split=split)
         auto_eval = self._select_auto_eval(auto_report, split)
@@ -252,7 +254,7 @@ class AgentOptimizationService:
             "score_delta": score_delta,
             "parity_margin": parity_margin,
             "parity_achieved": parity_achieved,
-            "manual_blueprint_path": str(Path(manual_blueprint_path).expanduser().resolve()),
+            "manual_blueprint_path": str(resolved_manual_blueprint_path),
             "evaluated_cases": manual_eval.total_cases,
             "auto_artifact_path": artifact_path,
         }
@@ -269,7 +271,7 @@ class AgentOptimizationService:
             parity_margin=parity_margin,
             parity_achieved=parity_achieved,
             auto_artifact_path=artifact_path,
-            manual_blueprint_path=str(Path(manual_blueprint_path).expanduser().resolve()),
+            manual_blueprint_path=str(resolved_manual_blueprint_path),
             evaluated_cases=manual_eval.total_cases,
         )
 
@@ -331,6 +333,23 @@ class AgentOptimizationService:
         if self._settings.chat2graph_runtime_mode.lower() == "sdk":
             return Chat2GraphSDKRuntimeAdapter(self._settings)
         return MockRuntimeAdapter()
+
+    def _resolve_manual_blueprint_path(self, manual_blueprint_path: str) -> Path:
+        allowed_root = self._settings.manual_blueprints_path.resolve()
+        raw_path = Path(manual_blueprint_path).expanduser()
+        resolved_path = (
+            raw_path.resolve()
+            if raw_path.is_absolute()
+            else (allowed_root / raw_path).resolve()
+        )
+
+        if not resolved_path.is_relative_to(allowed_root):
+            raise ValueError(
+                f"manual blueprint path must be under MANUAL_BLUEPRINTS_DIR: {allowed_root}"
+            )
+        if not resolved_path.exists() or not resolved_path.is_file():
+            raise ValueError(f"manual blueprint file not found: {resolved_path}")
+        return resolved_path
 
     def _select_parity_split(
         self,

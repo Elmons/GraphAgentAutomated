@@ -41,7 +41,7 @@ uv run alembic upgrade head
 uv run pytest
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 3
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 5 --include-ablations
-uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --manual-blueprint-path /abs/path/to/manual_workflow.yml --seeds 3
+uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --manual-blueprint-path /abs/path/to/artifacts/manual_blueprints/manual_workflow.yml --seeds 3
 # 如需走代理：追加 --trust-env
 ```
 
@@ -81,7 +81,7 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 {
   "agent_name": "fraud-agent-parity",
   "task_desc": "Find risky transfer chains with graph query and explain evidence",
-  "manual_blueprint_path": "/abs/path/to/manual_workflow.yml",
+  "manual_blueprint_path": "/abs/path/to/artifacts/manual_blueprints/manual_workflow.yml",
   "dataset_size": 12,
   "profile": "full_system",
   "seed": 7,
@@ -90,6 +90,7 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 ```
 
 返回 `parity_achieved=true` 表示自动方案在容差 `parity_margin` 内达到人工设计水平。
+`manual_blueprint_path` 必须位于 `MANUAL_BLUEPRINTS_DIR`（默认 `./artifacts/manual_blueprints`）目录下。
 
 ## 配置
 

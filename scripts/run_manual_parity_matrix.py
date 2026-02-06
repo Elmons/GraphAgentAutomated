@@ -21,7 +21,11 @@ DEFAULT_TASKS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run manual parity benchmark via GraphAgentAutomated API")
     parser.add_argument("--base-url", default="http://127.0.0.1:8008", help="API base URL")
-    parser.add_argument("--manual-blueprint-path", required=True, help="Path to manual workflow yaml/json")
+    parser.add_argument(
+        "--manual-blueprint-path",
+        required=True,
+        help="Path to manual workflow yaml/json (must be under MANUAL_BLUEPRINTS_DIR on server)",
+    )
     parser.add_argument("--profile", default="full_system", help="Optimization profile for auto generation")
     parser.add_argument("--dataset-size", type=int, default=12, help="Dataset size")
     parser.add_argument("--seeds", type=int, default=3, help="Number of seeds per task")

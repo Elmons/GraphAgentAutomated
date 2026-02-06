@@ -19,11 +19,13 @@ from graph_agent_automated.main import create_app
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     db_path = tmp_path / "test.db"
     artifacts_dir = tmp_path / "artifacts"
+    manual_blueprints_dir = tmp_path / "manual_blueprints"
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("CHAT2GRAPH_RUNTIME_MODE", "mock")
     monkeypatch.setenv("JUDGE_BACKEND", "mock")
     monkeypatch.setenv("ARTIFACTS_DIR", str(artifacts_dir))
+    monkeypatch.setenv("MANUAL_BLUEPRINTS_DIR", str(manual_blueprints_dir))
     get_settings.cache_clear()
 
     engine = create_engine(
@@ -129,7 +131,9 @@ def test_manual_parity_endpoint(client: TestClient, tmp_path: Path) -> None:
         "leader": {"actions": [{"name": "use_cypherexecutor"}]},
         "env": {"topology": "linear", "meta": {"source": "manual"}},
     }
-    manual_path = tmp_path / "manual.yml"
+    manual_dir = tmp_path / "manual_blueprints"
+    manual_dir.mkdir(parents=True, exist_ok=True)
+    manual_path = manual_dir / "manual.yml"
     with open(manual_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(manual_blueprint, f, sort_keys=False, allow_unicode=True)
 
@@ -155,3 +159,56 @@ def test_manual_parity_endpoint(client: TestClient, tmp_path: Path) -> None:
     assert "manual_score" in payload
     assert "parity_achieved" in payload
     assert payload["evaluated_cases"] > 0
+
+
+def test_manual_parity_rejects_uncontrolled_path(client: TestClient, tmp_path: Path) -> None:
+    outside_path = tmp_path / "outside" / "manual.yml"
+    outside_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(outside_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"app": {"name": "x"}}, f, sort_keys=False)
+
+    resp = client.post(
+        "/v1/agents/benchmark/manual-parity",
+        json={
+            "agent_name": "manual-parity-secure",
+            "task_desc": "图查询任务",
+            "manual_blueprint_path": str(outside_path),
+            "dataset_size": 8,
+            "profile": "full_system",
+            "seed": 7,
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "MANUAL_BLUEPRINTS_DIR" in resp.json()["detail"]
+
+    versions_resp = client.get("/v1/agents/manual-parity-secure/versions")
+    assert versions_resp.status_code == 200
+    assert versions_resp.json() == []
+
+
+def test_manual_parity_invalid_blueprint_does_not_persist(client: TestClient, tmp_path: Path) -> None:
+    manual_dir = tmp_path / "manual_blueprints"
+    manual_dir.mkdir(parents=True, exist_ok=True)
+    bad_manual_path = manual_dir / "invalid.yml"
+    with open(bad_manual_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(["not-a-dict"], f, sort_keys=False)
+
+    resp = client.post(
+        "/v1/agents/benchmark/manual-parity",
+        json={
+            "agent_name": "manual-parity-invalid",
+            "task_desc": "图查询任务",
+            "manual_blueprint_path": str(bad_manual_path),
+            "dataset_size": 8,
+            "profile": "full_system",
+            "seed": 7,
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "must be a JSON/YAML object" in resp.json()["detail"]
+
+    versions_resp = client.get("/v1/agents/manual-parity-invalid/versions")
+    assert versions_resp.status_code == 200
+    assert versions_resp.json() == []

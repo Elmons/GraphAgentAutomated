@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     chat2graph_root: str = ""
     chat2graph_runtime_mode: str = "mock"  # mock|sdk
     chat2graph_schema_file: str = ""
+    sdk_runtime_timeout_seconds: float = Field(default=30.0, gt=0.0, le=300.0)
+    sdk_runtime_max_retries: int = Field(default=2, ge=0, le=10)
+    sdk_runtime_retry_backoff_seconds: float = Field(default=0.5, ge=0.0, le=30.0)
+    sdk_runtime_circuit_failure_threshold: int = Field(default=5, ge=1, le=100)
+    sdk_runtime_circuit_reset_seconds: float = Field(default=30.0, gt=0.0, le=600.0)
 
     openai_api_key: str = ""
     openai_base_url: str = ""
@@ -43,10 +48,15 @@ class Settings(BaseSettings):
     test_ratio: float = Field(default=0.2, gt=0.05, lt=0.4)
 
     artifacts_dir: str = "./artifacts"
+    manual_blueprints_dir: str = "./artifacts/manual_blueprints"
 
     @property
     def artifacts_path(self) -> Path:
         return Path(self.artifacts_dir).resolve()
+
+    @property
+    def manual_blueprints_path(self) -> Path:
+        return Path(self.manual_blueprints_dir).resolve()
 
 
 @lru_cache(maxsize=1)
@@ -54,4 +64,5 @@ def get_settings() -> Settings:
     """Return cached settings singleton."""
     settings = Settings()
     settings.artifacts_path.mkdir(parents=True, exist_ok=True)
+    settings.manual_blueprints_path.mkdir(parents=True, exist_ok=True)
     return settings

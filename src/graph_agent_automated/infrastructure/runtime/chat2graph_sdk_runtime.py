@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
-from time import perf_counter
+from time import monotonic, perf_counter, sleep
 
 import yaml
 
@@ -18,6 +20,10 @@ from graph_agent_automated.domain.models import (
 from graph_agent_automated.infrastructure.runtime.yaml_renderer import Chat2GraphYamlRenderer
 
 
+class _RuntimeExecutionTimeoutError(RuntimeError):
+    """Raised when one runtime execution attempt exceeds timeout."""
+
+
 class Chat2GraphSDKRuntimeAdapter:
     """External adapter that treats chat2graph as an out-of-process SDK/runtime."""
 
@@ -25,6 +31,8 @@ class Chat2GraphSDKRuntimeAdapter:
         self._settings = settings
         self._root = Path(settings.chat2graph_root).resolve()
         self._renderer = Chat2GraphYamlRenderer()
+        self._consecutive_failures = 0
+        self._circuit_open_until = 0.0
 
         if not self._root.exists():
             raise ValueError(
@@ -82,20 +90,88 @@ class Chat2GraphSDKRuntimeAdapter:
         workflow_path = self.materialize(blueprint, runtime_dir)
 
         started = perf_counter()
-        output_text = ""
-        error = ""
+        circuit_error = self._check_circuit_open()
+        if circuit_error is not None:
+            return self._build_runtime_error(case=case, started=started, category="CIRCUIT_OPEN", detail=circuit_error)
 
+        max_attempts = self._settings.sdk_runtime_max_retries + 1
+        last_error = "unknown runtime failure"
+        last_category = "EXECUTION_ERROR"
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                output_text = self._execute_once_with_timeout(workflow_path, case.question)
+                self._record_success()
+                return self._build_runtime_result(case=case, started=started, output_text=output_text)
+            except _RuntimeExecutionTimeoutError as exc:
+                last_category = "TIMEOUT"
+                last_error = str(exc)
+            except Exception as exc:  # pragma: no cover - depends on external runtime
+                last_category = "EXECUTION_ERROR"
+                last_error = str(exc)
+
+            if attempt < max_attempts:
+                delay_seconds = self._settings.sdk_runtime_retry_backoff_seconds * (2 ** (attempt - 1))
+                if delay_seconds > 0:
+                    sleep(delay_seconds)
+
+        self._record_failure()
+        return self._build_runtime_error(
+            case=case,
+            started=started,
+            category=last_category,
+            detail=last_error,
+        )
+
+    def materialize(self, blueprint: WorkflowBlueprint, output_dir: Path) -> Path:
+        return self._renderer.render(blueprint, output_dir / "workflow.yml")
+
+    def _execute_once_with_timeout(self, workflow_path: Path, question: str) -> str:
+        timeout_seconds = self._settings.sdk_runtime_timeout_seconds
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._execute_once, workflow_path, question)
         try:
-            service = self._agentic_service_cls.load(yaml_path=str(workflow_path))
-            result = service.execute(case.question)
-            output_text = str(result.get_payload())
-        except Exception as exc:  # pragma: no cover - depends on external runtime
-            error = str(exc)
+            return future.result(timeout=timeout_seconds)
+        except FuturesTimeoutError as exc:
+            future.cancel()
+            raise _RuntimeExecutionTimeoutError(
+                f"chat2graph execution timed out after {timeout_seconds:.2f}s"
+            ) from exc
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
-        latency_ms = (perf_counter() - started) * 1000
-        if error:
-            output_text = f"RUNTIME_ERROR: {error}"
+    def _execute_once(self, workflow_path: Path, question: str) -> str:
+        service = self._agentic_service_cls.load(yaml_path=str(workflow_path))
+        result = service.execute(question)
+        payload_getter = getattr(result, "get_payload", None)
+        if callable(payload_getter):
+            return str(payload_getter())
+        return str(result)
 
+    def _check_circuit_open(self) -> str | None:
+        now = monotonic()
+        if now < self._circuit_open_until:
+            remaining = self._circuit_open_until - now
+            return f"chat2graph circuit open, retry after {remaining:.2f}s"
+        return None
+
+    def _record_success(self) -> None:
+        self._consecutive_failures = 0
+        self._circuit_open_until = 0.0
+
+    def _record_failure(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._settings.sdk_runtime_circuit_failure_threshold:
+            self._circuit_open_until = (
+                monotonic() + self._settings.sdk_runtime_circuit_reset_seconds
+            )
+
+    def _build_runtime_result(
+        self,
+        case: SyntheticCase,
+        started: float,
+        output_text: str,
+    ) -> CaseExecution:
         return CaseExecution(
             case_id=case.case_id,
             question=case.question,
@@ -103,12 +179,27 @@ class Chat2GraphSDKRuntimeAdapter:
             output=output_text,
             score=0.0,
             rationale="runtime output before LLM judge",
-            latency_ms=latency_ms,
+            latency_ms=(perf_counter() - started) * 1000,
             token_cost=0.0,
         )
 
-    def materialize(self, blueprint: WorkflowBlueprint, output_dir: Path) -> Path:
-        return self._renderer.render(blueprint, output_dir / "workflow.yml")
+    def _build_runtime_error(
+        self,
+        case: SyntheticCase,
+        started: float,
+        category: str,
+        detail: str,
+    ) -> CaseExecution:
+        return CaseExecution(
+            case_id=case.case_id,
+            question=case.question,
+            expected=case.verifier,
+            output=f"RUNTIME_ERROR[{category}]: {detail}",
+            score=0.0,
+            rationale="runtime output before LLM judge",
+            latency_ms=(perf_counter() - started) * 1000,
+            token_cost=0.0,
+        )
 
     def _ensure_importable(self, root: Path) -> None:
         if str(root) not in sys.path:

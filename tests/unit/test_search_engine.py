@@ -197,3 +197,38 @@ def test_search_engine_respects_mutation_toggles() -> None:
 
     assert result.round_traces
     assert all(trace.mutation.startswith("topology:switch(") for trace in result.round_traces)
+
+
+def test_tool_remove_mutation_keeps_blueprint_state_consistent() -> None:
+    engine = AFlowXSearchEngine(
+        evaluator=FakeEvaluator(),
+        prompt_optimizer=CandidatePromptOptimizer(max_candidates=4),
+        tool_selector=IntentAwareToolSelector(),
+    )
+
+    blueprint = _root_blueprint()
+    blueprint.tools.append(ToolSpec(name="PageRankExecutor", description="analysis", tags=["analysis"]))
+    blueprint.actions.append(
+        ActionSpec(
+            name="use_pagerankexecutor",
+            description="rank graph nodes",
+            tools=["PageRankExecutor"],
+        )
+    )
+    blueprint.experts[0].operators[0].actions.append("use_pagerankexecutor")
+
+    candidate, mutation = engine._mutate_tools(
+        parent_blueprint=blueprint,
+        intents=[TaskIntent.QUERY, TaskIntent.ANALYTICS],
+        tool_catalog=[
+            ToolSpec(name="CypherExecutor", description="query", tags=["query"]),
+            ToolSpec(name="PageRankExecutor", description="analysis", tags=["analysis"]),
+        ],
+        historical_tool_gain={},
+    )
+
+    assert mutation == "tool:remove(PageRankExecutor)"
+    assert {tool.name for tool in candidate.tools} == {"CypherExecutor"}
+    assert all("PageRankExecutor" not in action.tools for action in candidate.actions)
+    assert "use_pagerankexecutor" not in [action.name for action in candidate.actions]
+    assert "use_pagerankexecutor" not in candidate.experts[0].operators[0].actions

@@ -65,16 +65,16 @@
 
 ## P0 必须先做（阻塞生产判断）
 
-- 状态：`[ ]` 修复 manual parity 路径输入安全  
+- 状态：`[x]` 修复 manual parity 路径输入安全  
 验收：禁止任意本地路径读取，限制在受控目录或改成文件上传。
 
-- 状态：`[ ]` 修复 manual parity 事务语义  
+- 状态：`[x]` 修复 manual parity 事务语义  
 验收：人工蓝图校验失败时，不留下已落库的自动优化版本。
 
-- 状态：`[ ]` 修复 tool mutation 状态一致性 bug  
+- 状态：`[x]` 修复 tool mutation 状态一致性 bug  
 验收：`tool:remove(...)` 时同步更新 `blueprint.tools` 与 action/operator 引用。
 
-- 状态：`[ ]` 补齐 SDK runtime timeout/retry/circuit breaker  
+- 状态：`[x]` 补齐 SDK runtime timeout/retry/circuit breaker  
 验收：外部运行失败可控，错误分类清晰，不会拖垮服务。
 
 ## P1 生产化基础
