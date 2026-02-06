@@ -76,6 +76,7 @@
 
 - 状态：`[~]` 建立 failure taxonomy（不是只看均分）  
   - 已完成：新增失败分型器，覆盖 `tool_selection / decomposition / execution_grounding / verifier_mismatch / other`，并输出类别占比与严重度。  
+  - 已完成：新增 `scripts/analyze_failure_taxonomy.py` 与 `docs/28_failure_taxonomy_calibration.md`，可从 `records.json` 生成 `failure_taxonomy_analysis.json`（top signals / severe cases / calibration hints）。  
   - 未完成：基于真实 runtime 主实验结果校准规则并形成稳定分析报告。  
   - 验收：把失败切分为 tool selection / decomposition / execution grounding / verifier mismatch 等类型，并产出占比与严重度。
 

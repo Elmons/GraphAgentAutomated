@@ -33,6 +33,7 @@
 22. `docs/25_research_gate.md` 研究停机准则与 gate 规范
 23. `docs/26_research_idea_backlog.md` 可证伪 research ideas 与最小实验
 24. `docs/27_idea_experiment_protocol.md` idea 对照实验协议
+25. `docs/28_failure_taxonomy_calibration.md` failure taxonomy 校准协议
 
 新会话入口：先读 `docs/09_execution_todo.md` 与 `docs/24_codex_session_guide.md`。
 
@@ -50,6 +51,7 @@ uv run python scripts/analyze_experiment_arms.py --records-path artifacts/experi
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 3
 # 真实 runtime 建议异步模式（支持轮询、失败继续、断点续跑）
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 5 --async-submit --fail-on-errors
+uv run python scripts/analyze_failure_taxonomy.py --records-path artifacts/manual_parity/<date>/records.json
 uv run python scripts/evaluate_research_gate.py --records-path artifacts/manual_parity/<date>/records.json --gate-spec-path docs/benchmarks/research_gate_v1.json
 uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per-agent 10 --dry-run
 # 如需走代理：追加 --trust-env
@@ -123,6 +125,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 
 - `parity_stats.json`（mean delta、bootstrap CI、Wilcoxon、Cliff's delta）
 - `failure_taxonomy_summary.json`（失败类型与严重度聚合）
+- `failure_taxonomy_analysis.json`（失败信号聚合、严重样本与校准建议）
 - `errors.json`（失败请求与异常详情，便于断点续跑）
 - `gate_report.json`（研究停机准则 PASS/FAIL 及各 check 观测值）
 
