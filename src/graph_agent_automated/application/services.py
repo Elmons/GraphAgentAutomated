@@ -12,9 +12,12 @@ from graph_agent_automated.core.config import Settings, get_settings
 from graph_agent_automated.domain.enums import AgentLifecycle, ExperimentProfile
 from graph_agent_automated.domain.models import (
     AgentVersionRecord,
+    EvaluationSummary,
+    ManualParityReport,
     OptimizationKnobs,
     OptimizationReport,
     SearchConfig,
+    SyntheticCase,
 )
 from graph_agent_automated.infrastructure.evaluation.judges import (
     build_default_judge_ensemble,
@@ -41,6 +44,7 @@ from graph_agent_automated.infrastructure.runtime.chat2graph_sdk_runtime import 
     Chat2GraphSDKRuntimeAdapter,
 )
 from graph_agent_automated.infrastructure.runtime.mock_runtime import MockRuntimeAdapter
+from graph_agent_automated.infrastructure.runtime.workflow_loader import WorkflowBlueprintLoader
 from graph_agent_automated.infrastructure.synthesis.dynamic_synthesizer import (
     DynamicDatasetSynthesizer,
 )
@@ -193,6 +197,82 @@ class AgentOptimizationService:
         report.registry_record = registry_record
         return report
 
+    def benchmark_manual_parity(
+        self,
+        agent_name: str,
+        task_desc: str,
+        manual_blueprint_path: str,
+        dataset_size: int | None = None,
+        profile: ExperimentProfile = ExperimentProfile.FULL_SYSTEM,
+        seed: int | None = None,
+        parity_margin: float = 0.03,
+    ) -> ManualParityReport:
+        auto_report = self.optimize(
+            agent_name=agent_name,
+            task_desc=task_desc,
+            dataset_size=dataset_size,
+            profile=profile,
+            seed=seed,
+        )
+        if auto_report.registry_record is None:
+            raise ValueError("auto optimization report does not contain persisted artifact")
+
+        knobs = resolve_optimization_knobs(profile)
+        runtime = self._build_runtime()
+        judge = (
+            build_default_judge_ensemble(self._settings)
+            if knobs.use_ensemble_judge
+            else build_single_judge(self._settings)
+        )
+        evaluator = ReflectionWorkflowEvaluator(runtime=runtime, judge=judge)
+
+        loader = WorkflowBlueprintLoader()
+        manual_blueprint = loader.load(
+            path=manual_blueprint_path,
+            app_name=agent_name,
+            task_desc=task_desc,
+        )
+        split, cases = self._select_parity_split(auto_report)
+        manual_eval = evaluator.evaluate(manual_blueprint, cases, split=split)
+        auto_eval = self._select_auto_eval(auto_report, split)
+
+        auto_score = auto_eval.mean_score
+        manual_score = manual_eval.mean_score
+        score_delta = auto_score - manual_score
+        parity_achieved = auto_score + parity_margin >= manual_score
+
+        artifact_path = auto_report.registry_record.artifact_path
+        artifact_dir = Path(artifact_path).resolve().parent
+        report_payload = {
+            "run_id": auto_report.run_id,
+            "profile": profile.value,
+            "split": split,
+            "auto_score": auto_score,
+            "manual_score": manual_score,
+            "score_delta": score_delta,
+            "parity_margin": parity_margin,
+            "parity_achieved": parity_achieved,
+            "manual_blueprint_path": str(Path(manual_blueprint_path).expanduser().resolve()),
+            "evaluated_cases": manual_eval.total_cases,
+            "auto_artifact_path": artifact_path,
+        }
+        with open(artifact_dir / "manual_parity_report.json", "w", encoding="utf-8") as f:
+            json.dump(report_payload, f, ensure_ascii=False, indent=2)
+
+        return ManualParityReport(
+            run_id=auto_report.run_id,
+            profile=profile,
+            split=split,
+            auto_score=auto_score,
+            manual_score=manual_score,
+            score_delta=score_delta,
+            parity_margin=parity_margin,
+            parity_achieved=parity_achieved,
+            auto_artifact_path=artifact_path,
+            manual_blueprint_path=str(Path(manual_blueprint_path).expanduser().resolve()),
+            evaluated_cases=manual_eval.total_cases,
+        )
+
     def list_versions(self, agent_name: str) -> list[dict[str, object]]:
         repo = AgentRepository(self._session)
         rows = repo.list_versions(agent_name)
@@ -251,3 +331,24 @@ class AgentOptimizationService:
         if self._settings.chat2graph_runtime_mode.lower() == "sdk":
             return Chat2GraphSDKRuntimeAdapter(self._settings)
         return MockRuntimeAdapter()
+
+    def _select_parity_split(
+        self,
+        report: OptimizationReport,
+    ) -> tuple[str, list[SyntheticCase]]:
+        if report.test_evaluation is not None and report.dataset.test_cases:
+            return "test", list(report.dataset.test_cases)
+        if report.validation_evaluation is not None and report.dataset.val_cases:
+            return "val", list(report.dataset.val_cases)
+        return "train", list(report.dataset.train_cases or report.dataset.cases)
+
+    def _select_auto_eval(
+        self,
+        report: OptimizationReport,
+        split: str,
+    ) -> EvaluationSummary:
+        if split == "test" and report.test_evaluation is not None:
+            return report.test_evaluation
+        if split == "val" and report.validation_evaluation is not None:
+            return report.validation_evaluation
+        return report.best_evaluation

@@ -37,6 +37,30 @@ class VersionDTO(BaseModel):
     created_at: str
 
 
+class ManualParityRequest(BaseModel):
+    agent_name: str = Field(min_length=1, max_length=128)
+    task_desc: str = Field(min_length=1)
+    manual_blueprint_path: str = Field(min_length=1)
+    dataset_size: int | None = Field(default=None, ge=6, le=30)
+    profile: ExperimentProfile = ExperimentProfile.FULL_SYSTEM
+    seed: int | None = Field(default=None, ge=1, le=1_000_000)
+    parity_margin: float = Field(default=0.03, ge=0.0, le=0.2)
+
+
+class ManualParityResponse(BaseModel):
+    run_id: str
+    profile: ExperimentProfile
+    split: str
+    auto_score: float
+    manual_score: float
+    score_delta: float
+    parity_margin: float
+    parity_achieved: bool
+    auto_artifact_path: str
+    manual_blueprint_path: str
+    evaluated_cases: int
+
+
 class MessageResponse(BaseModel):
     message: str
 

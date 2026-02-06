@@ -111,6 +111,17 @@
   - `run_experiment_matrix.py` 传递 `profile + seed`
   - 新增单测覆盖 `profile` 和 `use_holdout/mutation toggle`
 
+## Phase 13: Production-grade Parity Track
+
+- 状态：`[~]`
+- 产出：
+  - `docs/23_production_readiness.md`
+  - 代码：`/v1/agents/benchmark/manual-parity`（自动生成 vs 人工蓝图）
+- 验收：
+  - manual parity 接口可在同 split 输出 `parity_achieved`
+  - artifact 自动写出 `manual_parity_report.json`
+  - 具备上线前 checklist 与里程碑
+
 ---
 
 ## Evidence Index

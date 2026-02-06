@@ -3,7 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from graph_agent_automated.api.dependencies import get_service
-from graph_agent_automated.api.schemas import OptimizeRequest, OptimizeResponse, VersionDTO
+from graph_agent_automated.api.schemas import (
+    ManualParityRequest,
+    ManualParityResponse,
+    OptimizeRequest,
+    OptimizeResponse,
+    VersionDTO,
+)
 from graph_agent_automated.application.services import AgentOptimizationService
 
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
@@ -75,3 +81,36 @@ def rollback_version(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return VersionDTO(**row)
+
+
+@router.post("/benchmark/manual-parity", response_model=ManualParityResponse)
+def benchmark_manual_parity(
+    request: ManualParityRequest,
+    service: AgentOptimizationService = Depends(get_service),
+) -> ManualParityResponse:
+    try:
+        report = service.benchmark_manual_parity(
+            agent_name=request.agent_name,
+            task_desc=request.task_desc,
+            manual_blueprint_path=request.manual_blueprint_path,
+            dataset_size=request.dataset_size,
+            profile=request.profile,
+            seed=request.seed,
+            parity_margin=request.parity_margin,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ManualParityResponse(
+        run_id=report.run_id,
+        profile=report.profile,
+        split=report.split,
+        auto_score=report.auto_score,
+        manual_score=report.manual_score,
+        score_delta=report.score_delta,
+        parity_margin=report.parity_margin,
+        parity_achieved=report.parity_achieved,
+        auto_artifact_path=report.auto_artifact_path,
+        manual_blueprint_path=report.manual_blueprint_path,
+        evaluated_cases=report.evaluated_cases,
+    )

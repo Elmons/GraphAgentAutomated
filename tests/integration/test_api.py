@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -98,3 +99,59 @@ def test_optimize_and_version_lifecycle(client: TestClient) -> None:
     assert rollback_resp.status_code == 200
     assert rollback_resp.json()["version"] == 1
     assert rollback_resp.json()["lifecycle"] == "deployed"
+
+
+def test_manual_parity_endpoint(client: TestClient, tmp_path: Path) -> None:
+    manual_blueprint = {
+        "app": {"name": "manual-agent", "desc": "manual graph task"},
+        "tools": [{"name": "CypherExecutor", "type": "LOCAL_TOOL"}],
+        "actions": [
+            {
+                "name": "use_cypherexecutor",
+                "desc": "run query",
+                "tools": [{"name": "CypherExecutor"}],
+            }
+        ],
+        "experts": [
+            {
+                "profile": {"name": "ManualExpert", "desc": "manual design"},
+                "workflow": [
+                    [
+                        {
+                            "instruction": "answer with evidence",
+                            "output_schema": "final_answer: str",
+                            "actions": [{"name": "use_cypherexecutor"}],
+                        }
+                    ]
+                ],
+            }
+        ],
+        "leader": {"actions": [{"name": "use_cypherexecutor"}]},
+        "env": {"topology": "linear", "meta": {"source": "manual"}},
+    }
+    manual_path = tmp_path / "manual.yml"
+    with open(manual_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(manual_blueprint, f, sort_keys=False, allow_unicode=True)
+
+    resp = client.post(
+        "/v1/agents/benchmark/manual-parity",
+        json={
+            "agent_name": "manual-parity-agent",
+            "task_desc": "图查询任务",
+            "manual_blueprint_path": str(manual_path),
+            "dataset_size": 8,
+            "profile": "full_system",
+            "seed": 7,
+            "parity_margin": 0.05,
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+
+    assert payload["run_id"].startswith("run-")
+    assert payload["profile"] == "full_system"
+    assert payload["split"] in {"train", "val", "test"}
+    assert "auto_score" in payload
+    assert "manual_score" in payload
+    assert "parity_achieved" in payload
+    assert payload["evaluated_cases"] > 0

@@ -28,6 +28,7 @@
 17. `docs/20_real_experiment_plan.md` 真实实验计划
 18. `docs/21_paper_package.md` 投稿材料包
 19. `docs/22_top_conf_idea_rcds.md` 顶会 idea 与落地实现
+20. `docs/23_production_readiness.md` 生产化路线与门槛
 
 ## 开发（uv）
 
@@ -37,6 +38,7 @@ uv run alembic upgrade head
 uv run pytest
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 3
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 5 --include-ablations
+uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --manual-blueprint-path /abs/path/to/manual_workflow.yml --seeds 3
 # 如需走代理：追加 --trust-env
 ```
 
@@ -65,6 +67,26 @@ uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 
 - `ablation_no_hard_negative`
 - `ablation_no_tool_gain`
 - `ablation_no_topology_mutation`
+
+## 人工对标评测
+
+可将人工设计的 `workflow.yml`（或内部 `blueprint.json`）与自动生成 agent 在同一 run 数据集上对比：
+
+`POST /v1/agents/benchmark/manual-parity`
+
+```json
+{
+  "agent_name": "fraud-agent-parity",
+  "task_desc": "Find risky transfer chains with graph query and explain evidence",
+  "manual_blueprint_path": "/abs/path/to/manual_workflow.yml",
+  "dataset_size": 12,
+  "profile": "full_system",
+  "seed": 7,
+  "parity_margin": 0.03
+}
+```
+
+返回 `parity_achieved=true` 表示自动方案在容差 `parity_margin` 内达到人工设计水平。
 
 ## 配置
 

@@ -227,3 +227,18 @@ class OptimizationReport:
     round_traces: list[SearchRoundTrace]
     history: list[EvaluationSummary]
     registry_record: AgentVersionRecord | None = None
+
+
+@dataclass
+class ManualParityReport:
+    run_id: str
+    profile: ExperimentProfile
+    split: str
+    auto_score: float
+    manual_score: float
+    score_delta: float
+    parity_margin: float
+    parity_achieved: bool
+    auto_artifact_path: str
+    manual_blueprint_path: str
+    evaluated_cases: int
