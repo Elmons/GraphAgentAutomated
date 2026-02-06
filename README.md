@@ -42,6 +42,7 @@ uv run pytest
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 3
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 5 --include-ablations
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --manual-blueprint-path /abs/path/to/artifacts/manual_blueprints/manual_workflow.yml --seeds 3
+uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per-agent 10 --dry-run
 # 如需走代理：追加 --trust-env
 ```
 
