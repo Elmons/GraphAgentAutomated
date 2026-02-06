@@ -1,0 +1,69 @@
+# Phase 10: Real Experiment Plan (Ready-to-run)
+
+版本：v1.0  
+日期：2026-02-07
+
+## 1. 实验目标
+
+验证本系统在真实 LLM + chat2graph runtime 上的泛化收益与成本边界。
+
+## 2. 评测矩阵
+
+## Baselines
+
+1. Static dataset + prompt-only
+2. Dynamic dataset + prompt-only
+3. Dynamic dataset + prompt+tool
+4. Full system（prompt+tool+topology+judge reliability）
+
+## Ablations
+
+1. -holdout（仅 train）
+2. -ensemble judge（单 judge）
+3. -hard-negative synthesis
+4. -tool historical gain
+5. -topology mutation
+
+## 3. 任务集
+
+- Query-heavy
+- Analytics-heavy
+- Hybrid planning
+- Schema/modeling
+
+每类至少 3 个任务簇，固定随机种子（例如 5 seeds）。
+
+## 4. 指标
+
+1. 质量：mean judge score / task success
+2. 稳定性：score variance, judge agreement
+3. 成本：token cost, latency
+4. 搜索效率：rounds-to-best, regret slope
+
+## 5. 统计检验
+
+1. 主指标使用配对 bootstrap CI。  
+2. 显著性：Wilcoxon signed-rank（非参数）。  
+3. 报告效应量：Cliff's delta。
+
+## 6. 运行工件
+
+- `scripts/run_experiment_matrix.py`：执行实验矩阵与结果汇总。
+- `artifacts/experiments/<date>/`：原始 run 与聚合统计。
+
+## 7. 运行门槛
+
+1. 配置好 `OPENAI_API_KEY`。  
+2. `CHAT2GRAPH_RUNTIME_MODE=sdk` 且 `CHAT2GRAPH_ROOT` 可用。  
+3. DB 切换到 PostgreSQL（推荐）。
+
+## 8. 失败预案
+
+1. judge 成本过高：先用 rule+heuristic 过滤再调用 openai judge。  
+2. 运行时抖动：重试 + timeout + 标记无效样本。  
+3. 结果分歧大：扩充 holdout 与种子数。
+
+## 9. Phase 10 Gate
+
+- 基线与消融矩阵固定、统计流程固定、脚本入口固定。  
+Gate 结论：`PASS`。
