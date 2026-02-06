@@ -13,6 +13,9 @@ from graph_agent_automated.domain.models import (
     EvaluationSummary,
     ExpertBlueprint,
     OperatorBlueprint,
+    OptimizationReport,
+    SearchRoundTrace,
+    SyntheticDataset,
     ToolSpec,
     WorkflowBlueprint,
 )
@@ -98,3 +101,58 @@ def test_repository_version_and_deploy_flow() -> None:
 
     first = repo.get_version("agentA", 1)
     assert first.blueprint_id == "bp-1"
+
+
+def test_repository_persists_optimization_run_and_traces() -> None:
+    session = _session()
+    repo = AgentRepository(session)
+    blueprint = _blueprint("bp-run")
+    evaluation = _evaluation("bp-run", 0.82)
+    dataset = SyntheticDataset(name="d", task_desc="t", cases=[])
+    report = OptimizationReport(
+        run_id="run-test",
+        dataset=dataset,
+        best_blueprint=blueprint,
+        best_evaluation=evaluation,
+        validation_evaluation=evaluation,
+        test_evaluation=evaluation,
+        round_traces=[],
+        history=[evaluation],
+    )
+
+    run = repo.create_optimization_run(
+        agent_name="agentA",
+        task_desc="task",
+        artifact_dir="/tmp/run",
+        report=report,
+    )
+    repo.add_round_traces(
+        run.id,
+        [
+            SearchRoundTrace(
+                round_num=1,
+                selected_node_id="n1",
+                selected_blueprint_id="bp-run",
+                mutation="prompt:optimize(worker)",
+                train_objective=0.7,
+                val_objective=0.68,
+                best_train_objective=0.7,
+                best_val_objective=0.68,
+                improvement=0.03,
+                regret=0.0,
+            )
+        ],
+    )
+    session.commit()
+
+    version = repo.create_version(
+        agent_name="agentA",
+        blueprint=blueprint,
+        evaluation=evaluation,
+        artifact_path="/tmp/bp-run.yml",
+        run_db_id=run.id,
+    )
+    session.commit()
+
+    assert run.run_id == "run-test"
+    assert version.run_id == run.id

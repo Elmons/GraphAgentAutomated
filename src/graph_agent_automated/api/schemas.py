@@ -10,10 +10,13 @@ class OptimizeRequest(BaseModel):
 
 
 class OptimizeResponse(BaseModel):
+    run_id: str
     agent_name: str
     version: int
     blueprint_id: str
-    best_score: float
+    train_score: float
+    val_score: float | None = None
+    test_score: float | None = None
     artifact_path: str
     evaluated_cases: int
 

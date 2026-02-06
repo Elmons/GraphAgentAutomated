@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+from pathlib import Path
+from uuid import uuid4
+
 from sqlalchemy.orm import Session
 
 from graph_agent_automated.core.config import Settings, get_settings
 from graph_agent_automated.domain.enums import AgentLifecycle
 from graph_agent_automated.domain.models import AgentVersionRecord, OptimizationReport, SearchConfig
-from graph_agent_automated.infrastructure.evaluation.judges import HeuristicJudge, OpenAIJudge
+from graph_agent_automated.infrastructure.evaluation.judges import build_default_judge_ensemble
 from graph_agent_automated.infrastructure.evaluation.workflow_evaluator import (
     ReflectionWorkflowEvaluator,
 )
 from graph_agent_automated.infrastructure.optimization.prompt_optimizer import (
-    ReflectionPromptOptimizer,
+    CandidatePromptOptimizer,
 )
 from graph_agent_automated.infrastructure.optimization.search_engine import (
     AFlowXSearchEngine,
@@ -39,11 +44,22 @@ class AgentOptimizationService:
         self._session = session
         self._settings = settings or get_settings()
 
-    def optimize(self, agent_name: str, task_desc: str, dataset_size: int | None = None) -> OptimizationReport:
+    def optimize(
+        self,
+        agent_name: str,
+        task_desc: str,
+        dataset_size: int | None = None,
+    ) -> OptimizationReport:
+        run_id = f"run-{uuid4().hex[:12]}"
         runtime = self._build_runtime()
-        judge = self._build_judge()
+        judge = build_default_judge_ensemble(self._settings)
 
-        synthesizer = DynamicDatasetSynthesizer(runtime=runtime)
+        synthesizer = DynamicDatasetSynthesizer(
+            runtime=runtime,
+            train_ratio=self._settings.train_ratio,
+            val_ratio=self._settings.val_ratio,
+            test_ratio=self._settings.test_ratio,
+        )
         data_size = dataset_size or self._settings.default_dataset_size
         dataset = synthesizer.synthesize(task_desc=task_desc, dataset_name=agent_name, size=data_size)
 
@@ -54,7 +70,7 @@ class AgentOptimizationService:
             task_desc=task_desc,
             intents=[intent.value for intent in intents],
             catalog=tool_catalog,
-            top_k=min(4, max(2, len(tool_catalog))),
+            top_k=min(6, max(2, len(tool_catalog))),
         )
 
         root = build_initial_blueprint(
@@ -64,40 +80,65 @@ class AgentOptimizationService:
         )
 
         evaluator = ReflectionWorkflowEvaluator(runtime=runtime, judge=judge)
+        prompt_optimizer = CandidatePromptOptimizer(max_candidates=self._settings.max_prompt_candidates)
         search = AFlowXSearchEngine(
             evaluator=evaluator,
-            prompt_optimizer=ReflectionPromptOptimizer(),
+            prompt_optimizer=prompt_optimizer,
             tool_selector=selector,
             config=SearchConfig(
                 rounds=self._settings.max_search_rounds,
                 expansions_per_round=self._settings.max_expansions_per_round,
+                max_prompt_candidates=self._settings.max_prompt_candidates,
+                train_ratio=self._settings.train_ratio,
+                val_ratio=self._settings.val_ratio,
+                test_ratio=self._settings.test_ratio,
             ),
         )
         result = search.optimize(
             root_blueprint=root,
-            cases=dataset.cases,
+            dataset=dataset,
             intents=intents,
             tool_catalog=tool_catalog,
         )
 
-        artifact_dir = (
-            self._settings.artifacts_path
-            / "agents"
-            / agent_name
-            / f"{result.best_blueprint.blueprint_id}"
+        artifact_dir = self._settings.artifacts_path / "agents" / agent_name / run_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+
+        workflow_path = runtime.materialize(result.best_blueprint, artifact_dir)
+        self._write_report_artifacts(artifact_dir, result, dataset, run_id)
+
+        report = OptimizationReport(
+            run_id=run_id,
+            dataset=dataset,
+            best_blueprint=result.best_blueprint,
+            best_evaluation=result.best_evaluation,
+            validation_evaluation=result.validation_evaluation,
+            test_evaluation=result.test_evaluation,
+            round_traces=result.round_traces,
+            history=result.history,
+            registry_record=None,
         )
-        artifact_path = runtime.materialize(result.best_blueprint, artifact_dir)
 
         repo = AgentRepository(self._session)
+        run_row = repo.create_optimization_run(
+            agent_name=agent_name,
+            task_desc=task_desc,
+            artifact_dir=str(artifact_dir),
+            report=report,
+        )
+        repo.add_round_traces(run_row.id, result.round_traces)
+
         version_row = repo.create_version(
             agent_name=agent_name,
             blueprint=result.best_blueprint,
-            evaluation=result.best_evaluation,
-            artifact_path=str(artifact_path),
+            evaluation=result.validation_evaluation or result.best_evaluation,
+            artifact_path=str(workflow_path),
+            run_db_id=run_row.id,
             lifecycle=AgentLifecycle.VALIDATED,
-            notes="optimized by GraphAgentAutomated",
+            notes="optimized by GraphAgentAutomated-v2",
         )
         self._session.commit()
+
         registry_record = AgentVersionRecord(
             agent_name=agent_name,
             version=int(version_row.version),
@@ -108,14 +149,8 @@ class AgentOptimizationService:
             created_at=version_row.created_at.isoformat(),
             notes=version_row.notes,
         )
-
-        return OptimizationReport(
-            dataset=dataset,
-            best_blueprint=result.best_blueprint,
-            best_evaluation=result.best_evaluation,
-            history=result.history,
-            registry_record=registry_record,
-        )
+        report.registry_record = registry_record
+        return report
 
     def list_versions(self, agent_name: str) -> list[dict[str, object]]:
         repo = AgentRepository(self._session)
@@ -134,12 +169,38 @@ class AgentOptimizationService:
         self._session.commit()
         return to_version_dict(row)
 
+    def _write_report_artifacts(
+        self,
+        artifact_dir: Path,
+        result,
+        dataset,
+        run_id: str,
+    ) -> None:
+        with open(artifact_dir / "dataset_report.json", "w", encoding="utf-8") as f:
+            json.dump(dataset.synthesis_report, f, ensure_ascii=False, indent=2)
+
+        with open(artifact_dir / "round_traces.json", "w", encoding="utf-8") as f:
+            json.dump([asdict(trace) for trace in result.round_traces], f, ensure_ascii=False, indent=2)
+
+        with open(artifact_dir / "prompt_variants.json", "w", encoding="utf-8") as f:
+            json.dump([asdict(variant) for variant in result.prompt_variants], f, ensure_ascii=False, indent=2)
+
+        summary = {
+            "run_id": run_id,
+            "best_blueprint_id": result.best_blueprint.blueprint_id,
+            "train_score": result.best_evaluation.mean_score,
+            "val_score": (
+                result.validation_evaluation.mean_score
+                if result.validation_evaluation is not None
+                else None
+            ),
+            "test_score": result.test_evaluation.mean_score if result.test_evaluation else None,
+            "tool_gain": result.historical_tool_gain,
+        }
+        with open(artifact_dir / "run_summary.json", "w", encoding="utf-8") as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+
     def _build_runtime(self):
         if self._settings.chat2graph_runtime_mode.lower() == "sdk":
             return Chat2GraphSDKRuntimeAdapter(self._settings)
         return MockRuntimeAdapter()
-
-    def _build_judge(self):
-        if self._settings.judge_backend.lower() == "openai":
-            return OpenAIJudge(self._settings)
-        return HeuristicJudge()

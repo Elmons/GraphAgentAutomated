@@ -9,7 +9,11 @@ from graph_agent_automated.domain.models import (
     ToolSpec,
     WorkflowBlueprint,
 )
-from graph_agent_automated.infrastructure.evaluation.judges import HeuristicJudge
+from graph_agent_automated.infrastructure.evaluation.judges import (
+    EnsembleJudge,
+    HeuristicJudge,
+    RuleBasedJudge,
+)
 from graph_agent_automated.infrastructure.evaluation.workflow_evaluator import (
     ReflectionWorkflowEvaluator,
 )
@@ -62,3 +66,31 @@ def test_reflection_evaluator_runs_cases() -> None:
     assert 0.0 <= summary.mean_score <= 1.0
     assert len(summary.case_results) == 1
     assert summary.reflection
+
+
+def test_reflection_evaluator_with_ensemble_exposes_reliability_fields() -> None:
+    runtime = MockRuntimeAdapter()
+    judge = EnsembleJudge(
+        judges=[
+            ("rule", RuleBasedJudge(), 1.0),
+            ("heuristic", HeuristicJudge(), 1.0),
+        ]
+    )
+    evaluator = ReflectionWorkflowEvaluator(runtime=runtime, judge=judge)
+    blueprint = _build_blueprint()
+    cases = [
+        SyntheticCase(
+            case_id="c2",
+            question="Find Person by OWNS",
+            verifier="UNKNOWN",
+            intent=TaskIntent.QUERY,
+            difficulty=Difficulty.L1,
+        )
+    ]
+
+    summary = evaluator.evaluate(blueprint, cases, split="val")
+
+    assert summary.split == "val"
+    assert 0.0 <= summary.judge_agreement <= 1.0
+    assert summary.case_results[0].judge_votes
+    assert 0.0 <= summary.case_results[0].confidence <= 1.0

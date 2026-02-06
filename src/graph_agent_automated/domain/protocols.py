@@ -43,6 +43,7 @@ class ToolSelector(Protocol):
         intents: Sequence[str],
         catalog: Sequence[ToolSpec],
         top_k: int,
+        historical_gain: dict[str, float] | None = None,
     ) -> list[ToolSpec]:
         """Return ranked tools."""
 
@@ -53,5 +54,10 @@ class LLMJudge(Protocol):
 
 
 class WorkflowEvaluator(Protocol):
-    def evaluate(self, blueprint: WorkflowBlueprint, cases: Sequence[SyntheticCase]) -> EvaluationSummary:
+    def evaluate(
+        self,
+        blueprint: WorkflowBlueprint,
+        cases: Sequence[SyntheticCase],
+        split: str = "train",
+    ) -> EvaluationSummary:
         """Evaluate one candidate workflow on dataset slice."""

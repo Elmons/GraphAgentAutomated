@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     default_dataset_size: int = Field(default=12, ge=6, le=30)
     max_search_rounds: int = Field(default=10, ge=1, le=100)
     max_expansions_per_round: int = Field(default=3, ge=1, le=10)
+    max_prompt_candidates: int = Field(default=4, ge=2, le=8)
+    train_ratio: float = Field(default=0.6, gt=0.4, lt=0.9)
+    val_ratio: float = Field(default=0.2, gt=0.05, lt=0.4)
+    test_ratio: float = Field(default=0.2, gt=0.05, lt=0.4)
 
     artifacts_dir: str = "./artifacts"
 

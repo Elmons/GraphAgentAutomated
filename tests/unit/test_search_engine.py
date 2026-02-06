@@ -9,18 +9,24 @@ from graph_agent_automated.domain.models import (
     OperatorBlueprint,
     SearchConfig,
     SyntheticCase,
+    SyntheticDataset,
     ToolSpec,
     WorkflowBlueprint,
 )
 from graph_agent_automated.infrastructure.optimization.prompt_optimizer import (
-    ReflectionPromptOptimizer,
+    CandidatePromptOptimizer,
 )
 from graph_agent_automated.infrastructure.optimization.search_engine import AFlowXSearchEngine
 from graph_agent_automated.infrastructure.optimization.tool_selector import IntentAwareToolSelector
 
 
 class FakeEvaluator:
-    def evaluate(self, blueprint: WorkflowBlueprint, cases: list[SyntheticCase]) -> EvaluationSummary:
+    def evaluate(
+        self,
+        blueprint: WorkflowBlueprint,
+        cases: list[SyntheticCase],
+        split: str = "train",
+    ) -> EvaluationSummary:
         base = 0.4
         topology_bonus = {
             TopologyPattern.LINEAR: 0.0,
@@ -28,7 +34,8 @@ class FakeEvaluator:
             TopologyPattern.ROUTER_PARALLEL: 0.2,
         }[blueprint.topology]
         tool_bonus = min(0.2, len(blueprint.tools) * 0.03)
-        score = min(0.95, base + topology_bonus + tool_bonus)
+        split_bonus = {"train": 0.02, "val": 0.01, "test": 0.0}.get(split, 0.0)
+        score = min(0.95, base + topology_bonus + tool_bonus + split_bonus)
 
         case_results = [
             CaseExecution(
@@ -51,6 +58,7 @@ class FakeEvaluator:
             mean_token_cost=0.003,
             total_cases=len(cases),
             reflection="fake reflection",
+            split=split,
             case_results=case_results,
         )
 
@@ -88,12 +96,24 @@ def _cases() -> list[SyntheticCase]:
     ]
 
 
+def _dataset() -> SyntheticDataset:
+    cases = _cases()
+    return SyntheticDataset(
+        name="demo",
+        task_desc="query and analytics",
+        cases=cases,
+        train_cases=cases[:3],
+        val_cases=cases[3:4],
+        test_cases=cases[4:],
+    )
+
+
 def test_search_engine_improves_or_keeps_best() -> None:
     engine = AFlowXSearchEngine(
         evaluator=FakeEvaluator(),
-        prompt_optimizer=ReflectionPromptOptimizer(),
+        prompt_optimizer=CandidatePromptOptimizer(max_candidates=4),
         tool_selector=IntentAwareToolSelector(),
-        config=SearchConfig(rounds=4, expansions_per_round=2, patience=2),
+        config=SearchConfig(rounds=4, expansions_per_round=2, patience=2, evaluation_budget=3),
     )
 
     tool_catalog = [
@@ -103,7 +123,7 @@ def test_search_engine_improves_or_keeps_best() -> None:
 
     result = engine.optimize(
         root_blueprint=_root_blueprint(),
-        cases=_cases(),
+        dataset=_dataset(),
         intents=[TaskIntent.QUERY, TaskIntent.ANALYTICS],
         tool_catalog=tool_catalog,
     )
@@ -111,3 +131,7 @@ def test_search_engine_improves_or_keeps_best() -> None:
     assert result.history
     assert result.best_evaluation.total_cases > 0
     assert result.best_blueprint.blueprint_id
+    assert result.validation_evaluation is not None
+    assert result.test_evaluation is not None
+    assert result.round_traces
+    assert result.prompt_variants

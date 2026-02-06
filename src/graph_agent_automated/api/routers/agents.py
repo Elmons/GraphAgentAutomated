@@ -23,10 +23,17 @@ def optimize_agent(
         raise HTTPException(status_code=500, detail="failed to persist version record")
 
     return OptimizeResponse(
+        run_id=report.run_id,
         agent_name=request.agent_name,
         version=report.registry_record.version,
         blueprint_id=report.best_blueprint.blueprint_id,
-        best_score=report.best_evaluation.mean_score,
+        train_score=report.best_evaluation.mean_score,
+        val_score=(
+            report.validation_evaluation.mean_score
+            if report.validation_evaluation is not None
+            else None
+        ),
+        test_score=report.test_evaluation.mean_score if report.test_evaluation is not None else None,
         artifact_path=report.registry_record.artifact_path,
         evaluated_cases=report.best_evaluation.total_cases,
     )

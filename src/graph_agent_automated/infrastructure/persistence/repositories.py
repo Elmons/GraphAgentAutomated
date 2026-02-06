@@ -8,11 +8,18 @@ from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session
 
 from graph_agent_automated.domain.enums import AgentLifecycle
-from graph_agent_automated.domain.models import EvaluationSummary, WorkflowBlueprint
+from graph_agent_automated.domain.models import (
+    EvaluationSummary,
+    OptimizationReport,
+    SearchRoundTrace,
+    WorkflowBlueprint,
+)
 from graph_agent_automated.infrastructure.persistence.models import (
     AgentORM,
     AgentVersionORM,
     EvaluationCaseORM,
+    OptimizationRoundTraceORM,
+    OptimizationRunORM,
 )
 
 
@@ -49,6 +56,7 @@ class AgentRepository:
         blueprint: WorkflowBlueprint,
         evaluation: EvaluationSummary,
         artifact_path: str,
+        run_db_id: int | None = None,
         lifecycle: AgentLifecycle = AgentLifecycle.VALIDATED,
         notes: str = "",
     ) -> AgentVersionORM:
@@ -64,6 +72,7 @@ class AgentRepository:
             score=evaluation.mean_score,
             artifact_path=artifact_path,
             notes=notes,
+            run_id=run_db_id,
         )
         self._session.add(version_row)
         self._session.flush()
@@ -84,6 +93,53 @@ class AgentRepository:
             )
 
         return version_row
+
+    def create_optimization_run(
+        self,
+        agent_name: str,
+        task_desc: str,
+        artifact_dir: str,
+        report: OptimizationReport,
+    ) -> OptimizationRunORM:
+        agent = self.get_or_create_agent(agent_name)
+        run_row = OptimizationRunORM(
+            run_id=report.run_id,
+            agent_id=agent.id,
+            task_desc=task_desc,
+            dataset_report_json=json.dumps(report.dataset.synthesis_report, ensure_ascii=False),
+            best_blueprint_id=report.best_blueprint.blueprint_id,
+            best_train_score=report.best_evaluation.mean_score,
+            best_val_score=(
+                report.validation_evaluation.mean_score
+                if report.validation_evaluation is not None
+                else 0.0
+            ),
+            best_test_score=(
+                report.test_evaluation.mean_score if report.test_evaluation is not None else 0.0
+            ),
+            artifact_dir=artifact_dir,
+        )
+        self._session.add(run_row)
+        self._session.flush()
+        return run_row
+
+    def add_round_traces(self, run_db_id: int, traces: list[SearchRoundTrace]) -> None:
+        for trace in traces:
+            self._session.add(
+                OptimizationRoundTraceORM(
+                    run_id=run_db_id,
+                    round_num=trace.round_num,
+                    selected_node_id=trace.selected_node_id,
+                    selected_blueprint_id=trace.selected_blueprint_id,
+                    mutation=trace.mutation,
+                    train_objective=trace.train_objective,
+                    val_objective=trace.val_objective,
+                    best_train_objective=trace.best_train_objective,
+                    best_val_objective=trace.best_val_objective,
+                    improvement=trace.improvement,
+                    regret=trace.regret,
+                )
+            )
 
     def list_versions(self, agent_name: str) -> list[AgentVersionORM]:
         stmt = (

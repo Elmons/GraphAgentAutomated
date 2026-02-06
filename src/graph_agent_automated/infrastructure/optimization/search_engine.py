@@ -11,26 +11,37 @@ from graph_agent_automated.domain.models import (
     EvaluationSummary,
     ExpertBlueprint,
     OperatorBlueprint,
+    PromptVariant,
     SearchConfig,
     SearchNode,
+    SearchRoundTrace,
     SyntheticCase,
+    SyntheticDataset,
     ToolSpec,
     WorkflowBlueprint,
 )
 from graph_agent_automated.domain.protocols import PromptOptimizer, ToolSelector, WorkflowEvaluator
+from graph_agent_automated.infrastructure.optimization.prompt_optimizer import (
+    CandidatePromptOptimizer,
+)
 
 
 @dataclass
 class SearchResult:
-    """Search output data for orchestration layer."""
+    """Optimization output for orchestration and reporting layers."""
 
     best_blueprint: WorkflowBlueprint
     best_evaluation: EvaluationSummary
+    validation_evaluation: EvaluationSummary | None
+    test_evaluation: EvaluationSummary | None
     history: list[EvaluationSummary]
+    round_traces: list[SearchRoundTrace]
+    prompt_variants: list[PromptVariant]
+    historical_tool_gain: dict[str, float]
 
 
 class AFlowXSearchEngine:
-    """MCTS-style search for prompt, toolset, and topology co-optimization."""
+    """MCTS-style search for prompt/tool/topology co-optimization with holdout control."""
 
     def __init__(
         self,
@@ -47,74 +58,122 @@ class AFlowXSearchEngine:
     def optimize(
         self,
         root_blueprint: WorkflowBlueprint,
-        cases: list[SyntheticCase],
+        dataset: SyntheticDataset,
         intents: list[TaskIntent],
         tool_catalog: list[ToolSpec],
     ) -> SearchResult:
-        if not cases:
-            raise ValueError("cases must not be empty")
+        train_cases = self._slice_cases(dataset.train_cases or dataset.cases, self._config.evaluation_budget)
+        val_cases = self._slice_cases(dataset.val_cases or dataset.cases, self._config.validation_budget)
+        test_cases = self._slice_cases(dataset.test_cases or dataset.cases, self._config.test_budget)
+
+        if not train_cases:
+            raise ValueError("train cases must not be empty")
 
         nodes: dict[str, SearchNode] = {}
         parent_map: dict[str, str | None] = {}
-        evaluation_map: dict[str, EvaluationSummary] = {}
-
-        root = SearchNode(node_id=self._new_node_id(), blueprint=root_blueprint)
-        nodes[root.node_id] = root
-        parent_map[root.node_id] = None
+        eval_train_map: dict[str, EvaluationSummary] = {}
+        eval_val_map: dict[str, EvaluationSummary] = {}
 
         history: list[EvaluationSummary] = []
-        current_best_blueprint = root_blueprint
+        round_traces: list[SearchRoundTrace] = []
+        historical_tool_gain: dict[str, float] = {}
 
-        root_eval = self._evaluate(root.blueprint, cases)
-        evaluation_map[root.blueprint.blueprint_id] = root_eval
-        root_objective = self._objective(root_eval, root.blueprint)
-        self._backpropagate(root.node_id, root_objective, nodes, parent_map)
+        root_node = SearchNode(node_id=self._new_node_id(), blueprint=root_blueprint)
+        nodes[root_node.node_id] = root_node
+        parent_map[root_node.node_id] = None
 
-        current_best_eval = root_eval
-        current_best_objective = root_objective
-        history.append(root_eval)
+        root_train_eval = self._evaluate(root_blueprint, train_cases, split="train")
+        root_val_eval = self._evaluate(root_blueprint, val_cases, split="val")
+        eval_train_map[root_blueprint.blueprint_id] = root_train_eval
+        eval_val_map[root_blueprint.blueprint_id] = root_val_eval
+        history.extend([root_train_eval, root_val_eval])
+
+        root_objective = self._objective(root_train_eval, root_blueprint)
+        self._backpropagate(root_node.node_id, root_objective, nodes, parent_map)
+
+        best_by_train_eval = root_train_eval
+        best_by_train_objective = root_objective
+
+        best_by_val_blueprint = root_blueprint
+        best_by_val_eval = root_val_eval
+        best_by_val_objective = self._objective(root_val_eval, root_blueprint)
 
         no_improve_rounds = 0
+        trace_idx = 0
 
         for round_idx in range(1, self._config.rounds + 1):
             selected = self._select(nodes)
-            selected_eval = evaluation_map[selected.blueprint.blueprint_id]
+            selected_train_eval = eval_train_map[selected.blueprint.blueprint_id]
+            selected_train_objective = self._objective(selected_train_eval, selected.blueprint)
 
-            best_before_round = current_best_objective
+            round_best_before = best_by_val_objective
+
             for expansion_idx in range(self._config.expansions_per_round):
-                child_blueprint, mutation = self._mutate(
+                candidate_blueprint, mutation = self._mutate(
                     parent_blueprint=selected.blueprint,
-                    parent_eval=selected_eval,
+                    parent_eval=selected_train_eval,
                     intents=intents,
                     tool_catalog=tool_catalog,
+                    historical_tool_gain=historical_tool_gain,
                     round_idx=round_idx,
                     expansion_idx=expansion_idx,
                 )
-                child_blueprint.parent_id = selected.blueprint.blueprint_id
-                child_blueprint.mutation_trace.append(mutation)
+                candidate_blueprint.parent_id = selected.blueprint.blueprint_id
+                candidate_blueprint.mutation_trace.append(mutation)
 
                 child = SearchNode(
                     node_id=self._new_node_id(),
-                    blueprint=child_blueprint,
+                    blueprint=candidate_blueprint,
                     parent_id=selected.node_id,
                 )
                 nodes[child.node_id] = child
                 parent_map[child.node_id] = selected.node_id
                 selected.children_ids.append(child.node_id)
 
-                child_eval = self._evaluate(child_blueprint, cases)
-                evaluation_map[child_blueprint.blueprint_id] = child_eval
-                history.append(child_eval)
+                child_train_eval = self._evaluate(candidate_blueprint, train_cases, split="train")
+                child_val_eval = self._evaluate(candidate_blueprint, val_cases, split="val")
+                eval_train_map[candidate_blueprint.blueprint_id] = child_train_eval
+                eval_val_map[candidate_blueprint.blueprint_id] = child_val_eval
+                history.extend([child_train_eval, child_val_eval])
 
-                child_objective = self._objective(child_eval, child_blueprint)
-                self._backpropagate(child.node_id, child_objective, nodes, parent_map)
+                child_train_objective = self._objective(child_train_eval, candidate_blueprint)
+                child_val_objective = self._objective(child_val_eval, candidate_blueprint)
+                self._backpropagate(child.node_id, child_train_objective, nodes, parent_map)
 
-                if child_objective > current_best_objective:
-                    current_best_objective = child_objective
-                    current_best_blueprint = child_blueprint
-                    current_best_eval = child_eval
+                if child_train_objective > best_by_train_objective:
+                    best_by_train_objective = child_train_objective
+                    best_by_train_eval = child_train_eval
 
-            round_improvement = current_best_objective - best_before_round
+                if child_val_objective > best_by_val_objective:
+                    best_by_val_objective = child_val_objective
+                    best_by_val_blueprint = candidate_blueprint
+                    best_by_val_eval = child_val_eval
+
+                improvement = child_train_objective - selected_train_objective
+                self._update_tool_gain(
+                    mutation=mutation,
+                    improvement=improvement,
+                    historical_tool_gain=historical_tool_gain,
+                )
+
+                regret = max(0.0, best_by_val_objective - child_val_objective)
+                trace_idx += 1
+                round_traces.append(
+                    SearchRoundTrace(
+                        round_num=trace_idx,
+                        selected_node_id=selected.node_id,
+                        selected_blueprint_id=selected.blueprint.blueprint_id,
+                        mutation=mutation,
+                        train_objective=child_train_objective,
+                        val_objective=child_val_objective,
+                        best_train_objective=best_by_train_objective,
+                        best_val_objective=best_by_val_objective,
+                        improvement=improvement,
+                        regret=regret,
+                    )
+                )
+
+            round_improvement = best_by_val_objective - round_best_before
             if round_improvement < self._config.min_improvement:
                 no_improve_rounds += 1
             else:
@@ -123,11 +182,33 @@ class AFlowXSearchEngine:
             if no_improve_rounds >= self._config.patience:
                 break
 
+        test_eval: EvaluationSummary | None = None
+        if test_cases:
+            test_eval = self._evaluate(best_by_val_blueprint, test_cases, split="test")
+            history.append(test_eval)
+
+        prompt_variants = self._extract_prompt_variants()
         return SearchResult(
-            best_blueprint=current_best_blueprint,
-            best_evaluation=current_best_eval,
+            best_blueprint=best_by_val_blueprint,
+            best_evaluation=best_by_train_eval,
+            validation_evaluation=best_by_val_eval,
+            test_evaluation=test_eval,
             history=history,
+            round_traces=round_traces,
+            prompt_variants=prompt_variants,
+            historical_tool_gain=historical_tool_gain,
         )
+
+    def _extract_prompt_variants(self) -> list[PromptVariant]:
+        registry = getattr(self._prompt_optimizer, "registry", None)
+        if registry is None:
+            return []
+        variants = getattr(registry, "list", None)
+        if callable(variants):
+            raw = variants()
+            if isinstance(raw, list):
+                return [item for item in raw if isinstance(item, PromptVariant)]
+        return []
 
     def _select(self, nodes: dict[str, SearchNode]) -> SearchNode:
         total_visits = sum(node.visits for node in nodes.values()) + 1
@@ -156,6 +237,7 @@ class AFlowXSearchEngine:
         parent_eval: EvaluationSummary,
         intents: list[TaskIntent],
         tool_catalog: list[ToolSpec],
+        historical_tool_gain: dict[str, float],
         round_idx: int,
         expansion_idx: int,
     ) -> tuple[WorkflowBlueprint, str]:
@@ -163,7 +245,7 @@ class AFlowXSearchEngine:
         if mode == 0:
             return self._mutate_prompt(parent_blueprint, parent_eval)
         if mode == 1:
-            return self._mutate_tools(parent_blueprint, intents, tool_catalog)
+            return self._mutate_tools(parent_blueprint, intents, tool_catalog, historical_tool_gain)
         return self._mutate_topology(parent_blueprint)
 
     def _mutate_prompt(
@@ -178,11 +260,20 @@ class AFlowXSearchEngine:
 
         failures = [result for result in parent_eval.case_results if result.score < 0.6]
         first_operator = candidate.experts[0].operators[0]
-        first_operator.instruction = self._prompt_optimizer.optimize(
-            prompt=first_operator.instruction,
-            failures=failures,
-            task_desc=candidate.task_desc,
-        )
+
+        if isinstance(self._prompt_optimizer, CandidatePromptOptimizer):
+            first_operator.instruction = self._prompt_optimizer.optimize(
+                prompt=first_operator.instruction,
+                failures=failures,
+                task_desc=candidate.task_desc,
+            )
+        else:
+            first_operator.instruction = self._prompt_optimizer.optimize(
+                first_operator.instruction,
+                failures,
+                candidate.task_desc,
+            )
+
         candidate.blueprint_id = self._new_blueprint_id()
         return candidate, f"prompt:optimize({first_operator.name})"
 
@@ -191,13 +282,16 @@ class AFlowXSearchEngine:
         parent_blueprint: WorkflowBlueprint,
         intents: list[TaskIntent],
         tool_catalog: list[ToolSpec],
+        historical_tool_gain: dict[str, float],
     ) -> tuple[WorkflowBlueprint, str]:
         candidate = copy.deepcopy(parent_blueprint)
+
         ranked_tools = self._tool_selector.rank(
             task_desc=candidate.task_desc,
             intents=[intent.value for intent in intents],
             catalog=tool_catalog,
             top_k=max(1, len(candidate.tools) + 1),
+            historical_gain=historical_tool_gain,
         )
 
         existing = {tool.name for tool in candidate.tools}
@@ -250,18 +344,30 @@ class AFlowXSearchEngine:
         candidate.blueprint_id = self._new_blueprint_id()
         return candidate, f"topology:switch({candidate.topology.value})"
 
-    def _evaluate(self, blueprint: WorkflowBlueprint, cases: list[SyntheticCase]) -> EvaluationSummary:
-        eval_cases = cases[: self._config.evaluation_budget]
-        return self._evaluator.evaluate(blueprint, eval_cases)
+    def _evaluate(
+        self,
+        blueprint: WorkflowBlueprint,
+        cases: list[SyntheticCase],
+        split: str,
+    ) -> EvaluationSummary:
+        return self._evaluator.evaluate(blueprint, cases, split=split)
 
     def _objective(self, summary: EvaluationSummary, blueprint: WorkflowBlueprint) -> float:
         complexity = len(blueprint.actions) + sum(len(expert.operators) for expert in blueprint.experts)
+        confidence = self._mean_confidence(summary)
         return (
             summary.mean_score
+            + self._config.confidence_weight * confidence
             - self._config.latency_penalty * (summary.mean_latency_ms / 1000.0)
             - self._config.cost_penalty * summary.mean_token_cost
             - self._config.complexity_penalty * (complexity / 10.0)
         )
+
+    def _mean_confidence(self, summary: EvaluationSummary) -> float:
+        if not summary.case_results:
+            return 0.0
+        confidences = [result.confidence for result in summary.case_results]
+        return sum(confidences) / len(confidences)
 
     def _novelty_bonus(self, node: SearchNode) -> float:
         unique_mutations = len(set(node.blueprint.mutation_trace))
@@ -286,6 +392,22 @@ class AFlowXSearchEngine:
             node.value_sum += reward
             node.best_score = max(node.best_score, reward)
             cursor = parent_map[cursor]
+
+    def _update_tool_gain(
+        self,
+        mutation: str,
+        improvement: float,
+        historical_tool_gain: dict[str, float],
+    ) -> None:
+        if not mutation.startswith("tool:add("):
+            return
+        tool_name = mutation[len("tool:add(") : -1]
+        old = historical_tool_gain.get(tool_name, 0.0)
+        # Exponential moving average.
+        historical_tool_gain[tool_name] = 0.7 * old + 0.3 * improvement
+
+    def _slice_cases(self, cases: list[SyntheticCase], budget: int) -> list[SyntheticCase]:
+        return list(cases[: max(1, budget)])
 
     def _new_node_id(self) -> str:
         return f"node-{uuid4().hex[:10]}"
@@ -318,7 +440,9 @@ def build_initial_blueprint(
     operators = build_topology_operators(topology, leader_actions)
     expert = ExpertBlueprint(
         name="GraphTaskExpert",
-        description="General graph task expert with planning, execution and verification capabilities.",
+        description=(
+            "General graph task expert with planning, execution and verification capabilities."
+        ),
         operators=operators,
     )
 
@@ -342,7 +466,9 @@ def build_topology_operators(
         return [
             OperatorBlueprint(
                 name="linear_worker",
-                instruction="Solve the graph task with minimal steps and explicit evidence references.",
+                instruction=(
+                    "Solve the graph task with minimal steps and explicit evidence references."
+                ),
                 output_schema="answer: concise factual answer",
                 actions=seed_actions,
             )

@@ -73,8 +73,19 @@ class SyntheticDataset:
     name: str
     task_desc: str
     cases: list[SyntheticCase]
+    train_cases: list[SyntheticCase] = field(default_factory=list)
+    val_cases: list[SyntheticCase] = field(default_factory=list)
+    test_cases: list[SyntheticCase] = field(default_factory=list)
     schema_snapshot: dict[str, Any] = field(default_factory=dict)
+    synthesis_report: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+@dataclass
+class JudgeVote:
+    judge_name: str
+    score: float
+    rationale: str
 
 
 @dataclass
@@ -87,6 +98,8 @@ class CaseExecution:
     rationale: str
     latency_ms: float
     token_cost: float
+    confidence: float = 0.0
+    judge_votes: list[JudgeVote] = field(default_factory=list)
 
 
 @dataclass
@@ -97,7 +110,33 @@ class EvaluationSummary:
     mean_token_cost: float
     total_cases: int
     reflection: str
+    judge_agreement: float = 0.0
+    score_std: float = 0.0
+    split: str = "train"
     case_results: list[CaseExecution] = field(default_factory=list)
+
+
+@dataclass
+class PromptVariant:
+    variant_id: str
+    prompt: str
+    source: str
+    score: float
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SearchRoundTrace:
+    round_num: int
+    selected_node_id: str
+    selected_blueprint_id: str
+    mutation: str
+    train_objective: float
+    val_objective: float
+    best_train_objective: float
+    best_val_objective: float
+    improvement: float
+    regret: float
 
 
 @dataclass
@@ -123,13 +162,20 @@ class SearchConfig:
     rounds: int = 10
     expansions_per_round: int = 3
     evaluation_budget: int = 8
+    validation_budget: int = 6
+    test_budget: int = 6
     exploration_weight: float = 1.2
     novelty_weight: float = 0.15
     latency_penalty: float = 0.05
     cost_penalty: float = 0.05
     complexity_penalty: float = 0.02
+    confidence_weight: float = 0.15
     min_improvement: float = 0.005
     patience: int = 3
+    max_prompt_candidates: int = 4
+    train_ratio: float = 0.6
+    val_ratio: float = 0.2
+    test_ratio: float = 0.2
 
 
 @dataclass
@@ -146,8 +192,12 @@ class AgentVersionRecord:
 
 @dataclass
 class OptimizationReport:
+    run_id: str
     dataset: SyntheticDataset
     best_blueprint: WorkflowBlueprint
     best_evaluation: EvaluationSummary
+    validation_evaluation: EvaluationSummary | None
+    test_evaluation: EvaluationSummary | None
+    round_traces: list[SearchRoundTrace]
     history: list[EvaluationSummary]
     registry_record: AgentVersionRecord | None = None

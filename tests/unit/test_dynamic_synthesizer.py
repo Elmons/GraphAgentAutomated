@@ -20,6 +20,9 @@ def test_dynamic_synthesizer_generates_bounded_dataset() -> None:
     assert len(dataset.cases) == 10
     assert {case.verifier for case in dataset.cases} == {"OK"}
     assert all(case.question for case in dataset.cases)
+    assert len(dataset.train_cases) + len(dataset.val_cases) + len(dataset.test_cases) == 10
+    assert dataset.synthesis_report["final_size"] == 10
+    assert "split_sizes" in dataset.synthesis_report
 
 
 def test_dynamic_synthesizer_fallback_size() -> None:
@@ -28,3 +31,6 @@ def test_dynamic_synthesizer_fallback_size() -> None:
 
     dataset = synthesizer.synthesize("query", "demo", 1)
     assert len(dataset.cases) >= 6
+    assert len(dataset.train_cases) >= 1
+    assert len(dataset.val_cases) >= 1
+    assert len(dataset.test_cases) >= 1

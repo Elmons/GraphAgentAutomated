@@ -61,6 +61,10 @@ def test_optimize_and_version_lifecycle(client: TestClient) -> None:
     assert optimize_resp.status_code == 200
     optimize_payload = optimize_resp.json()
     assert optimize_payload["version"] == 1
+    assert optimize_payload["run_id"].startswith("run-")
+    assert "train_score" in optimize_payload
+    assert "val_score" in optimize_payload
+    assert "test_score" in optimize_payload
 
     versions_resp = client.get("/v1/agents/demo-agent/versions")
     assert versions_resp.status_code == 200

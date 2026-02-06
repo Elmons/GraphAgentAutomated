@@ -22,6 +22,9 @@ class AgentORM(Base):
     versions: Mapped[list[AgentVersionORM]] = relationship(
         "AgentVersionORM", back_populates="agent", cascade="all, delete-orphan"
     )
+    runs: Mapped[list[OptimizationRunORM]] = relationship(
+        "OptimizationRunORM", back_populates="agent", cascade="all, delete-orphan"
+    )
 
 
 class AgentVersionORM(Base):
@@ -46,6 +49,10 @@ class AgentVersionORM(Base):
     evaluations: Mapped[list[EvaluationCaseORM]] = relationship(
         "EvaluationCaseORM", back_populates="agent_version", cascade="all, delete-orphan"
     )
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("optimization_runs.id"), nullable=True)
+    optimization_run: Mapped[OptimizationRunORM | None] = relationship(
+        "OptimizationRunORM", back_populates="versions"
+    )
 
 
 class EvaluationCaseORM(Base):
@@ -65,3 +72,48 @@ class EvaluationCaseORM(Base):
     token_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
     agent_version: Mapped[AgentVersionORM] = relationship("AgentVersionORM", back_populates="evaluations")
+
+
+class OptimizationRunORM(Base):
+    __tablename__ = "optimization_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    task_desc: Mapped[str] = mapped_column(Text, nullable=False)
+    dataset_report_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    best_blueprint_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    best_train_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    best_val_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    best_test_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    artifact_dir: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    agent: Mapped[AgentORM] = relationship("AgentORM", back_populates="runs")
+    round_traces: Mapped[list[OptimizationRoundTraceORM]] = relationship(
+        "OptimizationRoundTraceORM", back_populates="run", cascade="all, delete-orphan"
+    )
+    versions: Mapped[list[AgentVersionORM]] = relationship("AgentVersionORM", back_populates="optimization_run")
+
+
+class OptimizationRoundTraceORM(Base):
+    __tablename__ = "optimization_round_traces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("optimization_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    round_num: Mapped[int] = mapped_column(Integer, nullable=False)
+    selected_node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    selected_blueprint_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    mutation: Mapped[str] = mapped_column(String(256), nullable=False)
+    train_objective: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    val_objective: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    best_train_objective: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    best_val_objective: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    improvement: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    regret: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    run: Mapped[OptimizationRunORM] = relationship("OptimizationRunORM", back_populates="round_traces")
