@@ -45,6 +45,14 @@ ABLATION_ARMS = [
     ),
 ]
 
+IDEA_ARMS = [
+    ExperimentArm(
+        name="idea_failure_aware_mutation",
+        profile="idea_failure_aware_mutation",
+        dataset_size=12,
+    ),
+]
+
 def bootstrap_ci(values: list[float], n_resample: int = 2000, alpha: float = 0.05) -> tuple[float, float]:
     if not values:
         return (0.0, 0.0)
@@ -143,6 +151,11 @@ def parse_args() -> argparse.Namespace:
         help="Include ablation arms in addition to baselines",
     )
     parser.add_argument(
+        "--include-idea-arms",
+        action="store_true",
+        help="Include idea arms for controlled hypothesis experiments",
+    )
+    parser.add_argument(
         "--trust-env",
         action="store_true",
         help="Allow httpx to inherit proxy settings from environment variables",
@@ -163,6 +176,8 @@ def main() -> None:
     arms = list(BASELINE_ARMS)
     if args.include_ablations:
         arms.extend(ABLATION_ARMS)
+    if args.include_idea_arms:
+        arms.extend(IDEA_ARMS)
 
     with httpx.Client(base_url=args.base_url, trust_env=args.trust_env) as client:
         for task in benchmark.task_items:
@@ -216,6 +231,7 @@ def main() -> None:
                     for task in benchmark.task_items
                 ],
                 "include_ablations": args.include_ablations,
+                "include_idea_arms": args.include_idea_arms,
                 "trust_env": args.trust_env,
             },
             f,

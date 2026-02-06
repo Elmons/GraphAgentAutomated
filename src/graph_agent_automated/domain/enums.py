@@ -33,6 +33,7 @@ class AgentLifecycle(str, Enum):
 
 class ExperimentProfile(str, Enum):
     FULL_SYSTEM = "full_system"
+    IDEA_FAILURE_AWARE_MUTATION = "idea_failure_aware_mutation"
     BASELINE_STATIC_PROMPT_ONLY = "baseline_static_prompt_only"
     DYNAMIC_PROMPT_ONLY = "dynamic_prompt_only"
     DYNAMIC_PROMPT_TOOL = "dynamic_prompt_tool"

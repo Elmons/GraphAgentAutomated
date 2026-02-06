@@ -232,3 +232,97 @@ def test_tool_remove_mutation_keeps_blueprint_state_consistent() -> None:
     assert all("PageRankExecutor" not in action.tools for action in candidate.actions)
     assert "use_pagerankexecutor" not in [action.name for action in candidate.actions]
     assert "use_pagerankexecutor" not in candidate.experts[0].operators[0].actions
+
+
+def test_failure_aware_mutation_prefers_tool_when_tool_failures_dominate() -> None:
+    engine = AFlowXSearchEngine(
+        evaluator=FakeEvaluator(),
+        prompt_optimizer=CandidatePromptOptimizer(max_candidates=4),
+        tool_selector=IntentAwareToolSelector(),
+        config=SearchConfig(enable_failure_aware_mutation=True),
+    )
+    parent_eval = EvaluationSummary(
+        blueprint_id="bp-root",
+        mean_score=0.4,
+        mean_latency_ms=10.0,
+        mean_token_cost=0.001,
+        total_cases=3,
+        reflection="x",
+        case_results=[
+            CaseExecution(
+                case_id="c1",
+                question="q1",
+                expected="a1",
+                output="normal output",
+                score=0.2,
+                rationale="wrong tool selection: missing tool",
+                latency_ms=8.0,
+                token_cost=0.001,
+            ),
+            CaseExecution(
+                case_id="c2",
+                question="q2",
+                expected="a2",
+                output="normal output",
+                score=0.25,
+                rationale="missing tool for this step",
+                latency_ms=9.0,
+                token_cost=0.001,
+            ),
+            CaseExecution(
+                case_id="c3",
+                question="q3",
+                expected="a3",
+                output="normal output",
+                score=0.35,
+                rationale="tool executor mismatch",
+                latency_ms=11.0,
+                token_cost=0.001,
+            ),
+        ],
+    )
+
+    mode = engine._select_mutation_mode(
+        modes=["prompt", "tool", "topology"],
+        parent_eval=parent_eval,
+        round_idx=1,
+        expansion_idx=0,
+    )
+    assert mode == "tool"
+
+
+def test_failure_aware_mutation_disabled_falls_back_to_cyclic_order() -> None:
+    engine = AFlowXSearchEngine(
+        evaluator=FakeEvaluator(),
+        prompt_optimizer=CandidatePromptOptimizer(max_candidates=4),
+        tool_selector=IntentAwareToolSelector(),
+        config=SearchConfig(enable_failure_aware_mutation=False),
+    )
+    parent_eval = EvaluationSummary(
+        blueprint_id="bp-root",
+        mean_score=0.4,
+        mean_latency_ms=10.0,
+        mean_token_cost=0.001,
+        total_cases=1,
+        reflection="x",
+        case_results=[
+            CaseExecution(
+                case_id="c1",
+                question="q1",
+                expected="a1",
+                output="RUNTIME_ERROR[TIMEOUT]",
+                score=0.1,
+                rationale="runtime timeout",
+                latency_ms=8.0,
+                token_cost=0.001,
+            )
+        ],
+    )
+
+    mode = engine._select_mutation_mode(
+        modes=["prompt", "tool", "topology"],
+        parent_eval=parent_eval,
+        round_idx=2,
+        expansion_idx=0,
+    )
+    assert mode == "topology"

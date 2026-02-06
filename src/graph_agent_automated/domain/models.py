@@ -184,6 +184,7 @@ class SearchConfig:
     enable_prompt_mutation: bool = True
     enable_tool_mutation: bool = True
     enable_topology_mutation: bool = True
+    enable_failure_aware_mutation: bool = False
     use_holdout: bool = True
     enable_tool_historical_gain: bool = True
 
@@ -198,6 +199,7 @@ class OptimizationKnobs:
     enable_prompt_mutation: bool = True
     enable_tool_mutation: bool = True
     enable_topology_mutation: bool = True
+    enable_failure_aware_mutation: bool = False
     use_holdout: bool = True
     enable_tool_historical_gain: bool = True
     uncertainty_penalty: float = 0.12

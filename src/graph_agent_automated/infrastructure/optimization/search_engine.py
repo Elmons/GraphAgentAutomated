@@ -21,6 +21,9 @@ from graph_agent_automated.domain.models import (
     WorkflowBlueprint,
 )
 from graph_agent_automated.domain.protocols import PromptOptimizer, ToolSelector, WorkflowEvaluator
+from graph_agent_automated.infrastructure.evaluation.failure_taxonomy import (
+    classify_failure_case,
+)
 from graph_agent_automated.infrastructure.optimization.prompt_optimizer import (
     CandidatePromptOptimizer,
 )
@@ -282,13 +285,59 @@ class AFlowXSearchEngine:
             candidate.blueprint_id = self._new_blueprint_id()
             return candidate, "mutation:disabled"
 
-        mode = modes[(round_idx + expansion_idx) % len(modes)]
+        mode = self._select_mutation_mode(
+            modes=modes,
+            parent_eval=parent_eval,
+            round_idx=round_idx,
+            expansion_idx=expansion_idx,
+        )
         if mode == "prompt":
             return self._mutate_prompt(parent_blueprint, parent_eval)
         if mode == "tool":
             gain_source = historical_tool_gain if self._config.enable_tool_historical_gain else {}
             return self._mutate_tools(parent_blueprint, intents, tool_catalog, gain_source)
         return self._mutate_topology(parent_blueprint)
+
+    def _select_mutation_mode(
+        self,
+        modes: list[str],
+        parent_eval: EvaluationSummary,
+        round_idx: int,
+        expansion_idx: int,
+    ) -> str:
+        if not self._config.enable_failure_aware_mutation:
+            return modes[(round_idx + expansion_idx) % len(modes)]
+
+        failures = [result for result in parent_eval.case_results if result.score < 0.6]
+        if not failures:
+            return modes[(round_idx + expansion_idx) % len(modes)]
+
+        category_count = {
+            "tool_selection": 0,
+            "decomposition": 0,
+            "execution_grounding": 0,
+            "verifier_mismatch": 0,
+            "other": 0,
+        }
+        for failure in failures:
+            category, _ = classify_failure_case(failure)
+            category_count[category] = category_count.get(category, 0) + 1
+
+        weights = {mode: 1.0 for mode in modes}
+        if "tool" in weights:
+            weights["tool"] += 1.4 * category_count.get("tool_selection", 0)
+        if "topology" in weights:
+            weights["topology"] += 1.2 * category_count.get("decomposition", 0)
+        if "prompt" in weights:
+            weights["prompt"] += 1.2 * category_count.get("verifier_mismatch", 0)
+            weights["prompt"] += 0.8 * category_count.get("execution_grounding", 0)
+            weights["prompt"] += 0.2 * category_count.get("other", 0)
+        if "topology" in weights:
+            weights["topology"] += 0.5 * category_count.get("execution_grounding", 0)
+
+        best_weight = max(weights.values())
+        best_modes = sorted([mode for mode in modes if weights[mode] == best_weight])
+        return best_modes[(round_idx + expansion_idx) % len(best_modes)]
 
     def _mutate_prompt(
         self,

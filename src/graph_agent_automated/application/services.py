@@ -126,6 +126,7 @@ class AgentOptimizationService:
                 enable_prompt_mutation=knobs.enable_prompt_mutation,
                 enable_tool_mutation=knobs.enable_tool_mutation,
                 enable_topology_mutation=knobs.enable_topology_mutation,
+                enable_failure_aware_mutation=knobs.enable_failure_aware_mutation,
                 use_holdout=knobs.use_holdout,
                 enable_tool_historical_gain=knobs.enable_tool_historical_gain,
                 uncertainty_penalty=knobs.uncertainty_penalty,

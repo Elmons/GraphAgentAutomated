@@ -5,6 +5,12 @@ from graph_agent_automated.domain.models import OptimizationKnobs
 
 
 def resolve_optimization_knobs(profile: ExperimentProfile) -> OptimizationKnobs:
+    if profile == ExperimentProfile.IDEA_FAILURE_AWARE_MUTATION:
+        return OptimizationKnobs(
+            profile=profile,
+            enable_failure_aware_mutation=True,
+        )
+
     if profile == ExperimentProfile.BASELINE_STATIC_PROMPT_ONLY:
         return OptimizationKnobs(
             profile=profile,

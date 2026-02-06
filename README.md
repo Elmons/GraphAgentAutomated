@@ -31,6 +31,7 @@
 20. `docs/23_production_readiness.md` 生产化路线与门槛
 21. `docs/24_codex_session_guide.md` 新会话 Codex 强制指引
 22. `docs/25_research_gate.md` 研究停机准则与 gate 规范
+23. `docs/26_research_idea_backlog.md` 可证伪 research ideas 与最小实验
 
 新会话入口：先读 `docs/09_execution_todo.md` 与 `docs/24_codex_session_guide.md`。
 
@@ -42,6 +43,7 @@ uv run alembic upgrade head
 uv run pytest
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 3
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 5 --include-ablations
+uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 5 --include-idea-arms
 # parity 前请确保服务端 MANUAL_BLUEPRINTS_DIR 与 manual-blueprints-root 一致
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 3
 uv run python scripts/evaluate_research_gate.py --records-path artifacts/manual_parity/<date>/records.json --gate-spec-path docs/benchmarks/research_gate_v1.json
@@ -76,6 +78,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 - `dynamic_prompt_only`
 - `dynamic_prompt_tool`
 - `full_system`
+- `idea_failure_aware_mutation`
 - `ablation_no_holdout`
 - `ablation_single_judge`
 - `ablation_no_hard_negative`

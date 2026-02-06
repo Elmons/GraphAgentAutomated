@@ -21,3 +21,12 @@ def test_ablation_no_holdout_knobs() -> None:
     assert knobs.profile == ExperimentProfile.ABLATION_NO_HOLDOUT
     assert knobs.use_holdout is False
     assert knobs.generalization_penalty == 0.0
+
+
+def test_idea_failure_aware_mutation_knobs() -> None:
+    knobs = resolve_optimization_knobs(ExperimentProfile.IDEA_FAILURE_AWARE_MUTATION)
+
+    assert knobs.profile == ExperimentProfile.IDEA_FAILURE_AWARE_MUTATION
+    assert knobs.enable_failure_aware_mutation is True
+    assert knobs.enable_prompt_mutation is True
+    assert knobs.enable_tool_mutation is True

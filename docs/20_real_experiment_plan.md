@@ -24,6 +24,10 @@
 4. -tool historical gain
 5. -topology mutation
 
+## Idea Arms
+
+1. idea_failure_aware_mutation（失败分型驱动 mutation 调度）
+
 ## 3. 任务集
 
 - Query-heavy
@@ -53,7 +57,7 @@
 
 - `scripts/run_experiment_matrix.py`：执行实验矩阵与结果汇总。
 - 推荐参数：`--benchmark-path docs/benchmarks/research_benchmark_v1.json`
-- 基线：默认运行；消融：使用 `--include-ablations`。
+- 基线：默认运行；消融：使用 `--include-ablations`；idea 对照：`--include-idea-arms`。
 - `artifacts/experiments/<date>/`：原始 run 与聚合统计。
 - `scripts/run_manual_parity_matrix.py`：执行 `full_system` vs `manual` 对标评测（冻结任务簇）。
 - `artifacts/manual_parity/<date>/parity_stats.json`：mean delta + bootstrap CI + Wilcoxon + Cliff's delta。
