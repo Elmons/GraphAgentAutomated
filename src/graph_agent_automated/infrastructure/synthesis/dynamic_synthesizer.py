@@ -22,17 +22,22 @@ class DynamicDatasetSynthesizer(DatasetSynthesizer):
         self,
         runtime: RuntimeAdapter,
         answer_resolver: Callable[[str], str] | None = None,
-        random_seed: int = 7,
+        random_seed: int | None = None,
         train_ratio: float = 0.6,
         val_ratio: float = 0.2,
         test_ratio: float = 0.2,
+        enable_hard_negatives: bool = True,
+        enable_paraphrase: bool = True,
     ):
         self._runtime = runtime
         self._answer_resolver = answer_resolver or (lambda _: "UNKNOWN")
         self._random = random.Random(random_seed)
+        self._random_seed = random_seed
         self._train_ratio = train_ratio
         self._val_ratio = val_ratio
         self._test_ratio = test_ratio
+        self._enable_hard_negatives = enable_hard_negatives
+        self._enable_paraphrase = enable_paraphrase
 
         ratio_sum = train_ratio + val_ratio + test_ratio
         if abs(ratio_sum - 1.0) > 1e-6:
@@ -49,7 +54,8 @@ class DynamicDatasetSynthesizer(DatasetSynthesizer):
 
         templates = self._build_templates(intents)
         questions = self._render_questions(templates, labels, relations, target=bounded_size * 2)
-        questions.extend(self._hard_negative_questions(questions, labels, relations))
+        if self._enable_hard_negatives:
+            questions.extend(self._hard_negative_questions(questions, labels, relations))
         questions = self._deduplicate(questions)
 
         cases: list[SyntheticCase] = []
@@ -81,6 +87,9 @@ class DynamicDatasetSynthesizer(DatasetSynthesizer):
             "requested_size": size,
             "final_size": len(cases),
             "intents": [intent.value for intent in intents],
+            "dynamic_mode": self._random_seed is None,
+            "hard_negative_enabled": self._enable_hard_negatives,
+            "paraphrase_enabled": self._enable_paraphrase,
             "labels_sampled": labels,
             "relations_sampled": relations,
             "hard_negative_count": len(
@@ -171,7 +180,8 @@ class DynamicDatasetSynthesizer(DatasetSynthesizer):
             relation = self._random.choice(list(relations))
             question = seed.question_template.format(label=label, relation=relation)
             results.append(question)
-            results.extend(self._paraphrase(question))
+            if self._enable_paraphrase:
+                results.extend(self._paraphrase(question))
         return results[:target]
 
     def _paraphrase(self, question: str) -> list[str]:

@@ -7,6 +7,7 @@ from typing import Any
 from graph_agent_automated.domain.enums import (
     AgentLifecycle,
     Difficulty,
+    ExperimentProfile,
     TaskIntent,
     TopologyPattern,
 )
@@ -137,6 +138,8 @@ class SearchRoundTrace:
     best_val_objective: float
     improvement: float
     regret: float
+    uncertainty: float = 0.0
+    generalization_gap: float = 0.0
 
 
 @dataclass
@@ -170,12 +173,35 @@ class SearchConfig:
     cost_penalty: float = 0.05
     complexity_penalty: float = 0.02
     confidence_weight: float = 0.15
+    uncertainty_penalty: float = 0.12
+    generalization_penalty: float = 0.1
     min_improvement: float = 0.005
     patience: int = 3
     max_prompt_candidates: int = 4
     train_ratio: float = 0.6
     val_ratio: float = 0.2
     test_ratio: float = 0.2
+    enable_prompt_mutation: bool = True
+    enable_tool_mutation: bool = True
+    enable_topology_mutation: bool = True
+    use_holdout: bool = True
+    enable_tool_historical_gain: bool = True
+
+
+@dataclass(frozen=True)
+class OptimizationKnobs:
+    profile: ExperimentProfile
+    dynamic_dataset: bool = True
+    enable_paraphrase: bool = True
+    enable_hard_negatives: bool = True
+    use_ensemble_judge: bool = True
+    enable_prompt_mutation: bool = True
+    enable_tool_mutation: bool = True
+    enable_topology_mutation: bool = True
+    use_holdout: bool = True
+    enable_tool_historical_gain: bool = True
+    uncertainty_penalty: float = 0.12
+    generalization_penalty: float = 0.1
 
 
 @dataclass

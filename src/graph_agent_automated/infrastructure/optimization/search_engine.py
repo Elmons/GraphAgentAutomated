@@ -63,8 +63,12 @@ class AFlowXSearchEngine:
         tool_catalog: list[ToolSpec],
     ) -> SearchResult:
         train_cases = self._slice_cases(dataset.train_cases or dataset.cases, self._config.evaluation_budget)
-        val_cases = self._slice_cases(dataset.val_cases or dataset.cases, self._config.validation_budget)
-        test_cases = self._slice_cases(dataset.test_cases or dataset.cases, self._config.test_budget)
+        if self._config.use_holdout:
+            val_cases = self._slice_cases(dataset.val_cases or dataset.cases, self._config.validation_budget)
+            test_cases = self._slice_cases(dataset.test_cases or dataset.cases, self._config.test_budget)
+        else:
+            val_cases = train_cases
+            test_cases = []
 
         if not train_cases:
             raise ValueError("train cases must not be empty")
@@ -83,10 +87,14 @@ class AFlowXSearchEngine:
         parent_map[root_node.node_id] = None
 
         root_train_eval = self._evaluate(root_blueprint, train_cases, split="train")
-        root_val_eval = self._evaluate(root_blueprint, val_cases, split="val")
+        if self._config.use_holdout:
+            root_val_eval = self._evaluate(root_blueprint, val_cases, split="val")
+            history.extend([root_train_eval, root_val_eval])
+        else:
+            root_val_eval = root_train_eval
+            history.append(root_train_eval)
         eval_train_map[root_blueprint.blueprint_id] = root_train_eval
         eval_val_map[root_blueprint.blueprint_id] = root_val_eval
-        history.extend([root_train_eval, root_val_eval])
 
         root_objective = self._objective(root_train_eval, root_blueprint)
         self._backpropagate(root_node.node_id, root_objective, nodes, parent_map)
@@ -96,7 +104,11 @@ class AFlowXSearchEngine:
 
         best_by_val_blueprint = root_blueprint
         best_by_val_eval = root_val_eval
-        best_by_val_objective = self._objective(root_val_eval, root_blueprint)
+        best_by_val_objective = self._model_selection_objective(
+            train_summary=root_train_eval,
+            val_summary=root_val_eval,
+            blueprint=root_blueprint,
+        )
 
         no_improve_rounds = 0
         trace_idx = 0
@@ -131,13 +143,21 @@ class AFlowXSearchEngine:
                 selected.children_ids.append(child.node_id)
 
                 child_train_eval = self._evaluate(candidate_blueprint, train_cases, split="train")
-                child_val_eval = self._evaluate(candidate_blueprint, val_cases, split="val")
+                if self._config.use_holdout:
+                    child_val_eval = self._evaluate(candidate_blueprint, val_cases, split="val")
+                    history.extend([child_train_eval, child_val_eval])
+                else:
+                    child_val_eval = child_train_eval
+                    history.append(child_train_eval)
                 eval_train_map[candidate_blueprint.blueprint_id] = child_train_eval
                 eval_val_map[candidate_blueprint.blueprint_id] = child_val_eval
-                history.extend([child_train_eval, child_val_eval])
 
                 child_train_objective = self._objective(child_train_eval, candidate_blueprint)
-                child_val_objective = self._objective(child_val_eval, candidate_blueprint)
+                child_val_objective = self._model_selection_objective(
+                    train_summary=child_train_eval,
+                    val_summary=child_val_eval,
+                    blueprint=candidate_blueprint,
+                )
                 self._backpropagate(child.node_id, child_train_objective, nodes, parent_map)
 
                 if child_train_objective > best_by_train_objective:
@@ -157,6 +177,11 @@ class AFlowXSearchEngine:
                 )
 
                 regret = max(0.0, best_by_val_objective - child_val_objective)
+                generalization_gap = (
+                    self._generalization_gap(child_train_eval, child_val_eval)
+                    if self._config.use_holdout
+                    else 0.0
+                )
                 trace_idx += 1
                 round_traces.append(
                     SearchRoundTrace(
@@ -170,6 +195,8 @@ class AFlowXSearchEngine:
                         best_val_objective=best_by_val_objective,
                         improvement=improvement,
                         regret=regret,
+                        uncertainty=self._uncertainty(child_val_eval),
+                        generalization_gap=generalization_gap,
                     )
                 )
 
@@ -182,8 +209,9 @@ class AFlowXSearchEngine:
             if no_improve_rounds >= self._config.patience:
                 break
 
+        validation_eval = best_by_val_eval if self._config.use_holdout else None
         test_eval: EvaluationSummary | None = None
-        if test_cases:
+        if self._config.use_holdout and test_cases:
             test_eval = self._evaluate(best_by_val_blueprint, test_cases, split="test")
             history.append(test_eval)
 
@@ -191,7 +219,7 @@ class AFlowXSearchEngine:
         return SearchResult(
             best_blueprint=best_by_val_blueprint,
             best_evaluation=best_by_train_eval,
-            validation_evaluation=best_by_val_eval,
+            validation_evaluation=validation_eval,
             test_evaluation=test_eval,
             history=history,
             round_traces=round_traces,
@@ -241,11 +269,25 @@ class AFlowXSearchEngine:
         round_idx: int,
         expansion_idx: int,
     ) -> tuple[WorkflowBlueprint, str]:
-        mode = (round_idx + expansion_idx) % 3
-        if mode == 0:
+        modes: list[str] = []
+        if self._config.enable_prompt_mutation:
+            modes.append("prompt")
+        if self._config.enable_tool_mutation and tool_catalog:
+            modes.append("tool")
+        if self._config.enable_topology_mutation:
+            modes.append("topology")
+
+        if not modes:
+            candidate = copy.deepcopy(parent_blueprint)
+            candidate.blueprint_id = self._new_blueprint_id()
+            return candidate, "mutation:disabled"
+
+        mode = modes[(round_idx + expansion_idx) % len(modes)]
+        if mode == "prompt":
             return self._mutate_prompt(parent_blueprint, parent_eval)
-        if mode == 1:
-            return self._mutate_tools(parent_blueprint, intents, tool_catalog, historical_tool_gain)
+        if mode == "tool":
+            gain_source = historical_tool_gain if self._config.enable_tool_historical_gain else {}
+            return self._mutate_tools(parent_blueprint, intents, tool_catalog, gain_source)
         return self._mutate_topology(parent_blueprint)
 
     def _mutate_prompt(
@@ -355,13 +397,39 @@ class AFlowXSearchEngine:
     def _objective(self, summary: EvaluationSummary, blueprint: WorkflowBlueprint) -> float:
         complexity = len(blueprint.actions) + sum(len(expert.operators) for expert in blueprint.experts)
         confidence = self._mean_confidence(summary)
+        uncertainty = self._uncertainty(summary)
         return (
             summary.mean_score
             + self._config.confidence_weight * confidence
             - self._config.latency_penalty * (summary.mean_latency_ms / 1000.0)
             - self._config.cost_penalty * summary.mean_token_cost
             - self._config.complexity_penalty * (complexity / 10.0)
+            - self._config.uncertainty_penalty * uncertainty
         )
+
+    def _model_selection_objective(
+        self,
+        train_summary: EvaluationSummary,
+        val_summary: EvaluationSummary,
+        blueprint: WorkflowBlueprint,
+    ) -> float:
+        base = self._objective(val_summary, blueprint)
+        if not self._config.use_holdout:
+            return base
+        gap = self._generalization_gap(train_summary, val_summary)
+        return base - self._config.generalization_penalty * gap
+
+    def _uncertainty(self, summary: EvaluationSummary) -> float:
+        agreement_gap = 1.0 - max(0.0, min(1.0, summary.judge_agreement))
+        score_spread = max(0.0, summary.score_std)
+        return agreement_gap + score_spread
+
+    def _generalization_gap(
+        self,
+        train_summary: EvaluationSummary,
+        val_summary: EvaluationSummary,
+    ) -> float:
+        return max(0.0, train_summary.mean_score - val_summary.mean_score)
 
     def _mean_confidence(self, summary: EvaluationSummary) -> float:
         if not summary.case_results:
@@ -399,6 +467,8 @@ class AFlowXSearchEngine:
         improvement: float,
         historical_tool_gain: dict[str, float],
     ) -> None:
+        if not self._config.enable_tool_historical_gain:
+            return
         if not mutation.startswith("tool:add("):
             return
         tool_name = mutation[len("tool:add(") : -1]

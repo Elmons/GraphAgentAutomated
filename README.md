@@ -4,6 +4,9 @@
 
 `chat2graph` 仅作为外部 runtime 使用，不修改其内部实现。
 
+新增：支持 `profile` 驱动的 baseline/ablation 实验矩阵，所有 arm 会真实影响
+数据合成、judge、mutation 空间与搜索目标（不再是“同配置换名字”）。
+
 ## 文档
 
 1. `docs/00_research_survey.md` 调研
@@ -24,14 +27,44 @@
 16. `docs/19_mock_validation_report.md` Mock 验证报告
 17. `docs/20_real_experiment_plan.md` 真实实验计划
 18. `docs/21_paper_package.md` 投稿材料包
+19. `docs/22_top_conf_idea_rcds.md` 顶会 idea 与落地实现
 
 ## 开发（uv）
 
 ```bash
 uv sync --all-extras
+uv run alembic upgrade head
 uv run pytest
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 3
+uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --seeds 5 --include-ablations
+# 如需走代理：追加 --trust-env
 ```
+
+## API 示例
+
+`POST /v1/agents/optimize`
+
+```json
+{
+  "agent_name": "fraud-agent",
+  "task_desc": "Find risky transfer chains with graph query and explain evidence",
+  "dataset_size": 12,
+  "profile": "full_system",
+  "seed": 7
+}
+```
+
+可选 `profile`：
+
+- `baseline_static_prompt_only`
+- `dynamic_prompt_only`
+- `dynamic_prompt_tool`
+- `full_system`
+- `ablation_no_holdout`
+- `ablation_single_judge`
+- `ablation_no_hard_negative`
+- `ablation_no_tool_gain`
+- `ablation_no_topology_mutation`
 
 ## 配置
 

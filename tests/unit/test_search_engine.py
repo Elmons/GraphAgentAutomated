@@ -135,3 +135,65 @@ def test_search_engine_improves_or_keeps_best() -> None:
     assert result.test_evaluation is not None
     assert result.round_traces
     assert result.prompt_variants
+
+
+def test_search_engine_no_holdout_disables_val_and_test_outputs() -> None:
+    engine = AFlowXSearchEngine(
+        evaluator=FakeEvaluator(),
+        prompt_optimizer=CandidatePromptOptimizer(max_candidates=4),
+        tool_selector=IntentAwareToolSelector(),
+        config=SearchConfig(
+            rounds=3,
+            expansions_per_round=2,
+            patience=2,
+            evaluation_budget=3,
+            use_holdout=False,
+        ),
+    )
+    tool_catalog = [
+        ToolSpec(name="CypherExecutor", description="query", tags=["query"]),
+        ToolSpec(name="PageRankExecutor", description="analysis", tags=["analysis"]),
+    ]
+
+    result = engine.optimize(
+        root_blueprint=_root_blueprint(),
+        dataset=_dataset(),
+        intents=[TaskIntent.QUERY, TaskIntent.ANALYTICS],
+        tool_catalog=tool_catalog,
+    )
+
+    assert result.validation_evaluation is None
+    assert result.test_evaluation is None
+    assert result.round_traces
+    assert all(trace.generalization_gap == 0.0 for trace in result.round_traces)
+
+
+def test_search_engine_respects_mutation_toggles() -> None:
+    engine = AFlowXSearchEngine(
+        evaluator=FakeEvaluator(),
+        prompt_optimizer=CandidatePromptOptimizer(max_candidates=4),
+        tool_selector=IntentAwareToolSelector(),
+        config=SearchConfig(
+            rounds=2,
+            expansions_per_round=3,
+            patience=1,
+            evaluation_budget=3,
+            enable_prompt_mutation=False,
+            enable_tool_mutation=False,
+            enable_topology_mutation=True,
+        ),
+    )
+    tool_catalog = [
+        ToolSpec(name="CypherExecutor", description="query", tags=["query"]),
+        ToolSpec(name="PageRankExecutor", description="analysis", tags=["analysis"]),
+    ]
+
+    result = engine.optimize(
+        root_blueprint=_root_blueprint(),
+        dataset=_dataset(),
+        intents=[TaskIntent.QUERY, TaskIntent.ANALYTICS],
+        tool_catalog=tool_catalog,
+    )
+
+    assert result.round_traces
+    assert all(trace.mutation.startswith("topology:switch(") for trace in result.round_traces)

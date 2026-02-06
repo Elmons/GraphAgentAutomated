@@ -29,3 +29,15 @@ class AgentLifecycle(str, Enum):
     VALIDATED = "validated"
     DEPLOYED = "deployed"
     ARCHIVED = "archived"
+
+
+class ExperimentProfile(str, Enum):
+    FULL_SYSTEM = "full_system"
+    BASELINE_STATIC_PROMPT_ONLY = "baseline_static_prompt_only"
+    DYNAMIC_PROMPT_ONLY = "dynamic_prompt_only"
+    DYNAMIC_PROMPT_TOOL = "dynamic_prompt_tool"
+    ABLATION_NO_HOLDOUT = "ablation_no_holdout"
+    ABLATION_SINGLE_JUDGE = "ablation_single_judge"
+    ABLATION_NO_HARD_NEGATIVE = "ablation_no_hard_negative"
+    ABLATION_NO_TOOL_GAIN = "ablation_no_tool_gain"
+    ABLATION_NO_TOPOLOGY_MUTATION = "ablation_no_topology_mutation"

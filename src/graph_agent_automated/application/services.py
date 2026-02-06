@@ -7,10 +7,19 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from graph_agent_automated.application.profiles import resolve_optimization_knobs
 from graph_agent_automated.core.config import Settings, get_settings
-from graph_agent_automated.domain.enums import AgentLifecycle
-from graph_agent_automated.domain.models import AgentVersionRecord, OptimizationReport, SearchConfig
-from graph_agent_automated.infrastructure.evaluation.judges import build_default_judge_ensemble
+from graph_agent_automated.domain.enums import AgentLifecycle, ExperimentProfile
+from graph_agent_automated.domain.models import (
+    AgentVersionRecord,
+    OptimizationKnobs,
+    OptimizationReport,
+    SearchConfig,
+)
+from graph_agent_automated.infrastructure.evaluation.judges import (
+    build_default_judge_ensemble,
+    build_single_judge,
+)
 from graph_agent_automated.infrastructure.evaluation.workflow_evaluator import (
     ReflectionWorkflowEvaluator,
 )
@@ -49,16 +58,26 @@ class AgentOptimizationService:
         agent_name: str,
         task_desc: str,
         dataset_size: int | None = None,
+        profile: ExperimentProfile = ExperimentProfile.FULL_SYSTEM,
+        seed: int | None = None,
     ) -> OptimizationReport:
         run_id = f"run-{uuid4().hex[:12]}"
+        knobs = resolve_optimization_knobs(profile)
         runtime = self._build_runtime()
-        judge = build_default_judge_ensemble(self._settings)
+        judge = (
+            build_default_judge_ensemble(self._settings)
+            if knobs.use_ensemble_judge
+            else build_single_judge(self._settings)
+        )
 
         synthesizer = DynamicDatasetSynthesizer(
             runtime=runtime,
+            random_seed=seed if seed is not None else (None if knobs.dynamic_dataset else 7),
             train_ratio=self._settings.train_ratio,
             val_ratio=self._settings.val_ratio,
             test_ratio=self._settings.test_ratio,
+            enable_hard_negatives=knobs.enable_hard_negatives,
+            enable_paraphrase=knobs.enable_paraphrase,
         )
         data_size = dataset_size or self._settings.default_dataset_size
         dataset = synthesizer.synthesize(task_desc=task_desc, dataset_name=agent_name, size=data_size)
@@ -92,6 +111,13 @@ class AgentOptimizationService:
                 train_ratio=self._settings.train_ratio,
                 val_ratio=self._settings.val_ratio,
                 test_ratio=self._settings.test_ratio,
+                enable_prompt_mutation=knobs.enable_prompt_mutation,
+                enable_tool_mutation=knobs.enable_tool_mutation,
+                enable_topology_mutation=knobs.enable_topology_mutation,
+                use_holdout=knobs.use_holdout,
+                enable_tool_historical_gain=knobs.enable_tool_historical_gain,
+                uncertainty_penalty=knobs.uncertainty_penalty,
+                generalization_penalty=knobs.generalization_penalty,
             ),
         )
         result = search.optimize(
@@ -100,12 +126,27 @@ class AgentOptimizationService:
             intents=intents,
             tool_catalog=tool_catalog,
         )
+        result.best_blueprint.metadata.update(
+            {
+                "profile": profile.value,
+                "seed": seed,
+                "run_id": run_id,
+            }
+        )
 
         artifact_dir = self._settings.artifacts_path / "agents" / agent_name / run_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
 
         workflow_path = runtime.materialize(result.best_blueprint, artifact_dir)
-        self._write_report_artifacts(artifact_dir, result, dataset, run_id)
+        self._write_report_artifacts(
+            artifact_dir=artifact_dir,
+            result=result,
+            dataset=dataset,
+            run_id=run_id,
+            profile=profile,
+            seed=seed,
+            knobs=knobs,
+        )
 
         report = OptimizationReport(
             run_id=run_id,
@@ -175,6 +216,9 @@ class AgentOptimizationService:
         result,
         dataset,
         run_id: str,
+        profile: ExperimentProfile,
+        seed: int | None,
+        knobs: OptimizationKnobs,
     ) -> None:
         with open(artifact_dir / "dataset_report.json", "w", encoding="utf-8") as f:
             json.dump(dataset.synthesis_report, f, ensure_ascii=False, indent=2)
@@ -196,6 +240,9 @@ class AgentOptimizationService:
             ),
             "test_score": result.test_evaluation.mean_score if result.test_evaluation else None,
             "tool_gain": result.historical_tool_gain,
+            "profile": profile.value,
+            "seed": seed,
+            "knobs": asdict(knobs),
         }
         with open(artifact_dir / "run_summary.json", "w", encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)

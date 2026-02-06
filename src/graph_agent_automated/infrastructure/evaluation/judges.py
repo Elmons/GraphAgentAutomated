@@ -164,3 +164,9 @@ def build_default_judge_ensemble(settings: Settings) -> EnsembleJudge:
     if settings.judge_backend.lower() == "openai":
         judges.append(("openai", OpenAIJudge(settings), 1.4))
     return EnsembleJudge(judges=judges)
+
+
+def build_single_judge(settings: Settings) -> LLMJudge:
+    if settings.judge_backend.lower() == "openai":
+        return OpenAIJudge(settings)
+    return RuleBasedJudge()

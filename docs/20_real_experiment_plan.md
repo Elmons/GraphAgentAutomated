@@ -49,6 +49,7 @@
 ## 6. 运行工件
 
 - `scripts/run_experiment_matrix.py`：执行实验矩阵与结果汇总。
+- 基线：默认运行；消融：使用 `--include-ablations`。
 - `artifacts/experiments/<date>/`：原始 run 与聚合统计。
 
 ## 7. 运行门槛

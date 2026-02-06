@@ -62,6 +62,7 @@ def test_optimize_and_version_lifecycle(client: TestClient) -> None:
     optimize_payload = optimize_resp.json()
     assert optimize_payload["version"] == 1
     assert optimize_payload["run_id"].startswith("run-")
+    assert optimize_payload["profile"] == "full_system"
     assert "train_score" in optimize_payload
     assert "val_score" in optimize_payload
     assert "test_score" in optimize_payload
@@ -81,10 +82,13 @@ def test_optimize_and_version_lifecycle(client: TestClient) -> None:
             "agent_name": "demo-agent",
             "task_desc": "继续优化图查询精度",
             "dataset_size": 8,
+            "profile": "baseline_static_prompt_only",
+            "seed": 11,
         },
     )
     assert optimize_resp_2.status_code == 200
     assert optimize_resp_2.json()["version"] == 2
+    assert optimize_resp_2.json()["profile"] == "baseline_static_prompt_only"
 
     deploy_resp_2 = client.post("/v1/agents/demo-agent/versions/2/deploy")
     assert deploy_resp_2.status_code == 200

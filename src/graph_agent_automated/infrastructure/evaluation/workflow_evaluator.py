@@ -98,7 +98,7 @@ class ReflectionWorkflowEvaluator(WorkflowEvaluator):
             mean_token_cost=mean([result.token_cost for result in results]),
             total_cases=len(results),
             reflection=reflection,
-            judge_agreement=mean(agreements) if agreements else 0.0,
+            judge_agreement=mean(agreements) if agreements else 1.0,
             score_std=pstdev(scores) if len(scores) > 1 else 0.0,
             split=split,
             case_results=results,

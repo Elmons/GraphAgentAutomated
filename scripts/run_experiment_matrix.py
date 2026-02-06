@@ -17,14 +17,27 @@ import httpx
 @dataclass(frozen=True)
 class ExperimentArm:
     name: str
+    profile: str
     dataset_size: int
 
 
-DEFAULT_ARMS = [
-    ExperimentArm(name="baseline_static_prompt_only", dataset_size=12),
-    ExperimentArm(name="dynamic_prompt_only", dataset_size=12),
-    ExperimentArm(name="dynamic_prompt_tool", dataset_size=12),
-    ExperimentArm(name="full_system", dataset_size=12),
+BASELINE_ARMS = [
+    ExperimentArm(name="baseline_static_prompt_only", profile="baseline_static_prompt_only", dataset_size=12),
+    ExperimentArm(name="dynamic_prompt_only", profile="dynamic_prompt_only", dataset_size=12),
+    ExperimentArm(name="dynamic_prompt_tool", profile="dynamic_prompt_tool", dataset_size=12),
+    ExperimentArm(name="full_system", profile="full_system", dataset_size=12),
+]
+
+ABLATION_ARMS = [
+    ExperimentArm(name="ablation_no_holdout", profile="ablation_no_holdout", dataset_size=12),
+    ExperimentArm(name="ablation_single_judge", profile="ablation_single_judge", dataset_size=12),
+    ExperimentArm(name="ablation_no_hard_negative", profile="ablation_no_hard_negative", dataset_size=12),
+    ExperimentArm(name="ablation_no_tool_gain", profile="ablation_no_tool_gain", dataset_size=12),
+    ExperimentArm(
+        name="ablation_no_topology_mutation",
+        profile="ablation_no_topology_mutation",
+        dataset_size=12,
+    ),
 ]
 
 DEFAULT_TASKS = [
@@ -58,14 +71,17 @@ def run_arm(
     agent_name = f"{prefix}-{arm.name}-s{seed}"
     payload = {
         "agent_name": agent_name,
-        "task_desc": f"{task_desc} [seed={seed}]",
+        "task_desc": task_desc,
         "dataset_size": arm.dataset_size,
+        "profile": arm.profile,
+        "seed": seed,
     }
     resp = client.post("/v1/agents/optimize", json=payload, timeout=120)
     resp.raise_for_status()
     body = resp.json()
     return {
         "arm": arm.name,
+        "profile": arm.profile,
         "task_desc": task_desc,
         "seed": seed,
         "agent_name": agent_name,
@@ -111,6 +127,16 @@ def parse_args() -> argparse.Namespace:
         default="exp",
         help="Agent name prefix to avoid conflicts",
     )
+    parser.add_argument(
+        "--include-ablations",
+        action="store_true",
+        help="Include ablation arms in addition to baselines",
+    )
+    parser.add_argument(
+        "--trust-env",
+        action="store_true",
+        help="Allow httpx to inherit proxy settings from environment variables",
+    )
     return parser.parse_args()
 
 
@@ -121,13 +147,20 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     records: list[dict[str, Any]] = []
-    with httpx.Client(base_url=args.base_url) as client:
+    arms = list(BASELINE_ARMS)
+    if args.include_ablations:
+        arms.extend(ABLATION_ARMS)
+
+    with httpx.Client(base_url=args.base_url, trust_env=args.trust_env) as client:
         for task in DEFAULT_TASKS:
-            for arm in DEFAULT_ARMS:
+            for arm in arms:
                 for seed in range(1, args.seeds + 1):
                     row = run_arm(client, arm, task, seed, args.prefix)
                     records.append(row)
-                    print(f"[ok] task={task[:36]} arm={arm.name} seed={seed} test={row['test_score']:.4f}")
+                    print(
+                        f"[ok] task={task[:36]} arm={arm.name} "
+                        f"profile={arm.profile} seed={seed} test={row['test_score']:.4f}"
+                    )
 
     summary = summarize(records)
 
@@ -155,8 +188,10 @@ def main() -> None:
                 "timestamp": timestamp,
                 "base_url": args.base_url,
                 "seeds": args.seeds,
-                "arms": [asdict(arm) for arm in DEFAULT_ARMS],
+                "arms": [asdict(arm) for arm in arms],
                 "tasks": DEFAULT_TASKS,
+                "include_ablations": args.include_ablations,
+                "trust_env": args.trust_env,
             },
             f,
             ensure_ascii=False,

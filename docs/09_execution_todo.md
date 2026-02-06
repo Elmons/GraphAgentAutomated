@@ -100,6 +100,17 @@
 - 产出：`docs/21_paper_package.md`
 - 验收：投稿清单、工件清单、风险审查齐全。
 
+## Phase 12: Falsifiable Matrix + Reliability-Calibrated Search Landing
+
+- 状态：`[x]`
+- 产出：
+  - `docs/22_top_conf_idea_rcds.md`
+  - 代码：`profile` 可控基线/消融、uncertainty+gap 惩罚搜索目标、实验脚本真实矩阵执行
+- 验收：
+  - baseline/ablation arm 通过 API 参数真实分流
+  - `run_experiment_matrix.py` 传递 `profile + seed`
+  - 新增单测覆盖 `profile` 和 `use_holdout/mutation toggle`
+
 ---
 
 ## Evidence Index

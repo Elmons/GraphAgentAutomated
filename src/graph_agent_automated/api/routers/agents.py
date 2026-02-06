@@ -18,12 +18,15 @@ def optimize_agent(
         agent_name=request.agent_name,
         task_desc=request.task_desc,
         dataset_size=request.dataset_size,
+        profile=request.profile,
+        seed=request.seed,
     )
     if report.registry_record is None:
         raise HTTPException(status_code=500, detail="failed to persist version record")
 
     return OptimizeResponse(
         run_id=report.run_id,
+        profile=request.profile,
         agent_name=request.agent_name,
         version=report.registry_record.version,
         blueprint_id=report.best_blueprint.blueprint_id,
