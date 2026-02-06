@@ -21,7 +21,10 @@ from graph_agent_automated.domain.models import (
     SyntheticCase,
 )
 from graph_agent_automated.infrastructure.evaluation.failure_taxonomy import (
+    FailureTaxonomyRules,
     build_failure_taxonomy,
+    get_default_failure_taxonomy_rules,
+    load_failure_taxonomy_rules,
 )
 from graph_agent_automated.infrastructure.evaluation.judges import (
     build_default_judge_ensemble,
@@ -60,6 +63,7 @@ class AgentOptimizationService:
     def __init__(self, session: Session, settings: Settings | None = None):
         self._session = session
         self._settings = settings or get_settings()
+        self._failure_taxonomy_rules = self._resolve_failure_taxonomy_rules()
 
     @property
     def settings(self) -> Settings:
@@ -259,6 +263,7 @@ class AgentOptimizationService:
             auto_eval=auto_eval,
             manual_eval=manual_eval,
             failure_margin=parity_margin,
+            rules=self._failure_taxonomy_rules,
         )
 
         artifact_path = auto_report.registry_record.artifact_path
@@ -439,3 +444,9 @@ class AgentOptimizationService:
                 for vote in case.judge_votes
             ],
         }
+
+    def _resolve_failure_taxonomy_rules(self) -> FailureTaxonomyRules:
+        configured_file = self._settings.failure_taxonomy_rules_file.strip()
+        if not configured_file:
+            return get_default_failure_taxonomy_rules()
+        return load_failure_taxonomy_rules(configured_file)

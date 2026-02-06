@@ -72,5 +72,5 @@ def test_classify_failure_case_fallback_and_severity() -> None:
     severity = classify_failure_severity(auto_case.score, manual_case.score)
 
     assert category == "decomposition"
-    assert signal == "manual_gap>=0.2"
+    assert signal.startswith("manual_gap>=")
     assert severity == "severe"

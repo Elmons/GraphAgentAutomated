@@ -1,0 +1,51 @@
+{
+  "rules_id": "failure_taxonomy_rules_v1",
+  "version": "1.0.0",
+  "keywords": {
+    "execution_grounding": [
+      "runtime_error",
+      "timeout",
+      "circuit open",
+      "execution error",
+      "exception",
+      "traceback",
+      "query failed",
+      "cypher syntax"
+    ],
+    "tool_selection": [
+      "tool",
+      "action",
+      "executor",
+      "schemagetter",
+      "cypherexecutor",
+      "pagerankexecutor",
+      "knowledgebaseretriever",
+      "missing tool",
+      "wrong tool"
+    ],
+    "decomposition": [
+      "decompose",
+      "decomposition",
+      "subtask",
+      "multi-step",
+      "missing step",
+      "planning",
+      "workflow order",
+      "reasoning chain"
+    ],
+    "verifier_mismatch": [
+      "verifier",
+      "expected",
+      "mismatch",
+      "not aligned",
+      "format",
+      "answer differs",
+      "incorrect final answer"
+    ]
+  },
+  "thresholds": {
+    "severe_gap": 0.4,
+    "moderate_gap": 0.2,
+    "fallback_decomposition_gap": 0.2
+  }
+}

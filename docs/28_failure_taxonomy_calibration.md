@@ -18,6 +18,11 @@
 ```bash
 uv run python scripts/analyze_failure_taxonomy.py \
   --records-path artifacts/manual_parity/<date>/records.json
+
+# 如需验证新规则：先编辑 failure_taxonomy_rules_v*.json，再离线重算
+uv run python scripts/recompute_failure_taxonomy.py \
+  --records-path artifacts/manual_parity/<date>/records.json \
+  --rules-path docs/benchmarks/failure_taxonomy_rules_v1.json
 ```
 
 ## 4. 输出

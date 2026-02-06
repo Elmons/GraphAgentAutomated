@@ -17,7 +17,8 @@
 
 1. 一键编排脚本：`scripts/run_research_pipeline.py`  
 2. pipeline 工具模块：`src/graph_agent_automated/infrastructure/runtime/research_pipeline.py`  
-3. 失败分型校准分析：`scripts/analyze_failure_taxonomy.py` + `failure_taxonomy_analysis.json`
+3. 失败分型校准分析：`scripts/analyze_failure_taxonomy.py` + `failure_taxonomy_analysis.json`  
+4. 失败分型规则版本化：`docs/benchmarks/failure_taxonomy_rules_v1.json` + `scripts/recompute_failure_taxonomy.py`
 
 ## 3. 仍需完成的硬任务（R0）
 

@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     auth_jwt_audience: str = ""
     auth_jwt_clock_skew_seconds: int = Field(default=30, ge=0, le=600)
     auth_default_tenant_id: str = "default"
+    failure_taxonomy_rules_file: str = ""
 
     default_dataset_size: int = Field(default=12, ge=6, le=30)
     max_search_rounds: int = Field(default=10, ge=1, le=100)

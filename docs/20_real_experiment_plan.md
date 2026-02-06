@@ -66,6 +66,8 @@
 - `artifacts/manual_parity/<date>/failure_taxonomy_summary.json`：失败类型占比与严重度。
 - `scripts/analyze_failure_taxonomy.py`：产出失败信号与严重样本校准报告。
 - `artifacts/manual_parity/<date>/failure_taxonomy_analysis.json`：top signals / severe cases / calibration hints。
+- `scripts/recompute_failure_taxonomy.py`：按指定规则文件离线重算 failure taxonomy（用于规则校准对比）。
+- `docs/benchmarks/failure_taxonomy_rules_v1.json`：默认 failure taxonomy 规则版本文件。
 - `artifacts/manual_parity/<date>/errors.json`：失败样本与错误详情（支持续跑排障）。
 - `scripts/evaluate_research_gate.py`：基于固定 gate 规则给出 PASS/FAIL。
 - `artifacts/manual_parity/<date>/gate_report.json`：各 gate check 的 observed/threshold 与结论。
