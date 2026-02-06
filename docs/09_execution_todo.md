@@ -80,6 +80,7 @@
 
 - 状态：`[~]` 形成 research idea backlog（至少 3 个可证伪假设）并做小步 ablation  
   - 已完成：新增 `docs/26_research_idea_backlog.md`（3 个可证伪假设）；Idea-1（failure-aware mutation scheduler）已实现为 profile `idea_failure_aware_mutation`，并接入实验脚本 `--include-idea-arms`。  
+  - 已完成：新增 `scripts/analyze_experiment_arms.py` 与 `docs/27_idea_experiment_protocol.md`，支持 `full_system` vs idea arm 的配对统计对照（CI/Wilcoxon/Cliff's delta，含按 task/category 分解）。  
   - 未完成：在真实 runtime + 真实 judge 上完成 Idea-1 与 `full_system` 的正式对照实验并沉淀统计工件。  
   - 验收：每个 idea 都有“动机-机制-可证伪条件-最小实验”，至少完成 1 个 idea 的端到端实现与对照实验。
 
