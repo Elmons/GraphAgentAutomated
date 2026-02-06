@@ -26,6 +26,11 @@ uv run python scripts/analyze_experiment_arms.py \
   --records-path artifacts/experiments/<date>/records.json \
   --baseline-arm full_system \
   --target-arms idea_failure_aware_mutation
+
+# 自动判定 hypothesis 是否被支持
+uv run python scripts/evaluate_hypothesis.py \
+  --arm-comparison-path artifacts/experiments/<date>/arm_comparison_summary.json \
+  --hypothesis-spec-path docs/benchmarks/hypothesis_idea1_v1.json
 ```
 
 ## 3. 输出工件
@@ -33,6 +38,7 @@ uv run python scripts/analyze_experiment_arms.py \
 - `artifacts/experiments/<date>/records.json`
 - `artifacts/experiments/<date>/summary.json`
 - `artifacts/experiments/<date>/arm_comparison_summary.json`
+- `artifacts/experiments/<date>/hypothesis_report.json`
 
 ## 4. 判读建议
 

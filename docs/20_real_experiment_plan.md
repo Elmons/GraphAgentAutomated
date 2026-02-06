@@ -59,6 +59,7 @@
 - 推荐参数：`--benchmark-path docs/benchmarks/research_benchmark_v1.json`
 - 基线：默认运行；消融：使用 `--include-ablations`；idea 对照：`--include-idea-arms`。
 - `scripts/analyze_experiment_arms.py`：对 `full_system` 与目标 arm 做配对统计对照。
+- `scripts/evaluate_hypothesis.py`：依据 hypothesis spec 自动给出支持/证伪判定。
 - `artifacts/experiments/<date>/`：原始 run 与聚合统计。
 - `scripts/run_manual_parity_matrix.py`：执行 `full_system` vs `manual` 对标评测（冻结任务簇）。
 - 推荐真实 runtime 参数：`--async-submit --fail-on-errors`（长任务不受同步请求超时影响）。

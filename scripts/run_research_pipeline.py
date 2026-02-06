@@ -126,6 +126,16 @@ def parse_args() -> argparse.Namespace:
         help="Skip analyze_experiment_arms.py",
     )
     parser.add_argument(
+        "--skip-hypothesis-eval",
+        action="store_true",
+        help="Skip evaluate_hypothesis.py",
+    )
+    parser.add_argument(
+        "--hypothesis-spec-path",
+        default="docs/benchmarks/hypothesis_idea1_v1.json",
+        help="Hypothesis spec JSON path for idea evaluation",
+    )
+    parser.add_argument(
         "--skip-manual-parity",
         action="store_true",
         help="Skip run_manual_parity_matrix.py",
@@ -289,6 +299,42 @@ def main() -> None:
             step = run_step("analyze_experiment_arms", command)
             if step.status == "ok":
                 step.output_path = str(experiment_run_dir / "arm_comparison_summary.json")
+            else:
+                failed_steps.append(step.name)
+            step_rows.append(step)
+            if step.status != "ok" and not args.continue_on_error:
+                _write_report(report_path, args, step_rows, failed_steps, experiment_run_dir, parity_run_dir)
+                raise SystemExit(2)
+
+    if not args.skip_hypothesis_eval:
+        if experiment_run_dir is None:
+            failed_steps.append("evaluate_hypothesis")
+            step_rows.append(
+                StepResult(
+                    name="evaluate_hypothesis",
+                    status="failed",
+                    command=[],
+                    started_at=datetime.now(timezone.utc).isoformat(),
+                    ended_at=datetime.now(timezone.utc).isoformat(),
+                    duration_seconds=0.0,
+                    detail="missing experiment_run_dir",
+                )
+            )
+            if not args.continue_on_error:
+                _write_report(report_path, args, step_rows, failed_steps, experiment_run_dir, parity_run_dir)
+                raise SystemExit(2)
+        else:
+            command = [
+                sys.executable,
+                "scripts/evaluate_hypothesis.py",
+                "--arm-comparison-path",
+                str(experiment_run_dir / "arm_comparison_summary.json"),
+                "--hypothesis-spec-path",
+                args.hypothesis_spec_path,
+            ]
+            step = run_step("evaluate_hypothesis", command)
+            if step.status == "ok":
+                step.output_path = str(experiment_run_dir / "hypothesis_report.json")
             else:
                 failed_steps.append(step.name)
             step_rows.append(step)

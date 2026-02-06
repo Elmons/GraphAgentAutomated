@@ -1,0 +1,17 @@
+{
+  "hypothesis_id": "idea1_failure_aware_mutation",
+  "version": "1.0.0",
+  "baseline_arm": "full_system",
+  "target_arm": "idea_failure_aware_mutation",
+  "criteria": {
+    "min_pairs": 24,
+    "min_mean_score_delta": 0.0,
+    "min_ci95_lower_bound": -0.02,
+    "min_p10_score_delta": -0.08,
+    "max_score_delta_std": 0.12,
+    "min_win_rate": 0.45,
+    "require_wilcoxon_significance": false,
+    "wilcoxon_alpha": 0.05,
+    "min_cliffs_delta": -0.05
+  }
+}

@@ -36,6 +36,7 @@
 25. `docs/28_failure_taxonomy_calibration.md` failure taxonomy 校准协议
 26. `docs/29_research_gap_audit.md` R0 收敛缺口审计与下一步
 27. `docs/30_failure_taxonomy_rules.md` failure taxonomy 规则版本化
+28. `docs/31_hypothesis_evaluation.md` hypothesis 支持/证伪判定协议
 
 新会话入口：先读 `docs/09_execution_todo.md` 与 `docs/24_codex_session_guide.md`。
 
@@ -49,6 +50,7 @@ uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 5 --include-ablations
 uv run python scripts/run_experiment_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --seeds 5 --include-idea-arms
 uv run python scripts/analyze_experiment_arms.py --records-path artifacts/experiments/<date>/records.json --baseline-arm full_system --target-arms idea_failure_aware_mutation
+uv run python scripts/evaluate_hypothesis.py --arm-comparison-path artifacts/experiments/<date>/arm_comparison_summary.json --hypothesis-spec-path docs/benchmarks/hypothesis_idea1_v1.json
 # parity 前请确保服务端 MANUAL_BLUEPRINTS_DIR 与 manual-blueprints-root 一致
 uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:8008 --benchmark-path docs/benchmarks/research_benchmark_v1.json --manual-blueprints-root /abs/path/to/GraphAgentAutomated/docs/manual_blueprints/research_benchmark_v1 --seeds 3
 # 真实 runtime 建议异步模式（支持轮询、失败继续、断点续跑）
@@ -135,6 +137,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 - `errors.json`（失败请求与异常详情，便于断点续跑）
 - `gate_report.json`（研究停机准则 PASS/FAIL 及各 check 观测值）
 - `artifacts/pipeline/pipeline_<timestamp>.json`（一键 pipeline 执行报告）
+- `hypothesis_report.json`（idea hypothesis 支持/证伪自动判定）
 
 ## 异步任务接口
 

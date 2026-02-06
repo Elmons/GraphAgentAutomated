@@ -31,4 +31,5 @@
 
 1. 已有 3 个可证伪 hypothesis。  
 2. Idea-1 已端到端落地为新 profile：`idea_failure_aware_mutation`。  
-3. 尚未完成真实 runtime + 真实 judge 的对照实验工件沉淀。
+3. 已新增 hypothesis 自动判定脚本：`scripts/evaluate_hypothesis.py`（基于 `hypothesis_idea1_v1.json`）。  
+4. 尚未完成真实 runtime + 真实 judge 的对照实验工件沉淀。
