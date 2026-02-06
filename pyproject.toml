@@ -1,0 +1,60 @@
+[project]
+name = "graph-agent-automated"
+version = "0.1.0"
+description = "Automated graph agent generation system with dynamic synthesis, MCTS optimization, and LLM-based evaluation"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+authors = [
+  { name = "GraphAgentAutomated Team" }
+]
+dependencies = [
+  "fastapi>=0.116.0,<1.0.0",
+  "uvicorn>=0.35.0,<1.0.0",
+  "pydantic>=2.11.0,<3.0.0",
+  "pydantic-settings>=2.10.0,<3.0.0",
+  "sqlalchemy>=2.0.40,<3.0.0",
+  "alembic>=1.16.0,<2.0.0",
+  "pyyaml>=6.0.2,<7.0.0",
+  "httpx>=0.28.1,<1.0.0",
+  "openai>=1.101.0,<2.0.0"
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4.1,<9.0.0",
+  "pytest-asyncio>=1.1.0,<2.0.0",
+  "pytest-cov>=6.2.1,<7.0.0",
+  "ruff>=0.12.8,<1.0.0",
+  "mypy>=1.17.1,<2.0.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "E501", "UP007", "UP035", "UP037", "UP045"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true

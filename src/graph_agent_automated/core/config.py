@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Centralized application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    app_name: str = "GraphAgentAutomated"
+    app_env: str = "dev"
+    app_host: str = "0.0.0.0"
+    app_port: int = 8008
+
+    database_url: str = "sqlite:///./graph_agent_automated.db"
+    sql_echo: bool = False
+
+    chat2graph_root: str = ""
+    chat2graph_runtime_mode: str = "mock"  # mock|sdk
+    chat2graph_schema_file: str = ""
+
+    openai_api_key: str = ""
+    openai_base_url: str = ""
+    judge_backend: str = "mock"  # mock|openai
+    judge_model: str = "gpt-4.1-mini"
+
+    default_dataset_size: int = Field(default=12, ge=6, le=30)
+    max_search_rounds: int = Field(default=10, ge=1, le=100)
+    max_expansions_per_round: int = Field(default=3, ge=1, le=10)
+
+    artifacts_dir: str = "./artifacts"
+
+    @property
+    def artifacts_path(self) -> Path:
+        return Path(self.artifacts_dir).resolve()
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return cached settings singleton."""
+    settings = Settings()
+    settings.artifacts_path.mkdir(parents=True, exist_ok=True)
+    return settings

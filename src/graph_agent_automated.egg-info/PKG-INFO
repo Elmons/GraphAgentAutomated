@@ -1,0 +1,40 @@
+Metadata-Version: 2.4
+Name: graph-agent-automated
+Version: 0.1.0
+Summary: Automated graph agent generation system with dynamic synthesis, MCTS optimization, and LLM-based evaluation
+Author: GraphAgentAutomated Team
+Requires-Python: <3.12,>=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi<1.0.0,>=0.116.0
+Requires-Dist: uvicorn<1.0.0,>=0.35.0
+Requires-Dist: pydantic<3.0.0,>=2.11.0
+Requires-Dist: pydantic-settings<3.0.0,>=2.10.0
+Requires-Dist: sqlalchemy<3.0.0,>=2.0.40
+Requires-Dist: alembic<2.0.0,>=1.16.0
+Requires-Dist: pyyaml<7.0.0,>=6.0.2
+Requires-Dist: httpx<1.0.0,>=0.28.1
+Requires-Dist: openai<2.0.0,>=1.101.0
+
+# GraphAgentAutomated
+
+独立的智能体自动生成系统：动态数据合成 + prompt/tool/topology 联合优化 + LLM 评估闭环。
+
+`chat2graph` 仅作为外部 runtime 使用，不修改其内部实现。
+
+## 文档
+
+1. `docs/00_research_survey.md` 调研
+2. `docs/01_requirements.md` 需求分析
+3. `docs/02_system_design.md` 系统设计
+4. `docs/03_test_design.md` 测试设计
+
+## 开发（uv）
+
+```bash
+uv sync --all-extras
+uv run pytest
+```
+
+## 配置
+
+使用 `pydantic_settings` 统一管理环境变量，见 `.env.example`。
