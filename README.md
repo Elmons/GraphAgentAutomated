@@ -59,7 +59,10 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 }
 ```
 
-当 `AUTH_ENABLED=true` 时，请在请求头中携带 `X-API-Key`。
+当 `AUTH_ENABLED=true` 时，请在请求头中携带以下任一凭证：
+
+- `X-API-Key: <key>`
+- `Authorization: Bearer <jwt>`
 
 可选 `profile`：
 
@@ -98,7 +101,7 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 
 使用 `pydantic_settings` 统一管理环境变量，见 `.env.example`。
 
-鉴权与租户隔离（API key + RBAC）：
+鉴权与租户隔离（API key/JWT + RBAC）：
 
 - `AUTH_ENABLED=true` 开启鉴权（默认 `false`）。
 - `AUTH_API_KEYS_JSON` 使用 JSON 对象配置 API key，例如：
@@ -112,3 +115,17 @@ uv run python scripts/run_manual_parity_matrix.py --base-url http://127.0.0.1:80
 ```
 
 不同 `tenant_id` 的请求会自动进行 agent 数据隔离（同名 agent 互不干扰）。
+
+JWT 配置（支持密钥轮换）：
+
+- `AUTH_JWT_KEYS_JSON` 使用 `kid -> secret` 的 JSON 对象，例如：
+
+```json
+{
+  "kid-2026-01": "old-secret",
+  "kid-2026-02": "new-secret"
+}
+```
+
+- `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` 可选开启 `iss`/`aud` 校验。
+- token 需包含 `tenant_id`、`role`、`exp` claims；当配置了多个 key 时，JWT header 必须带 `kid`。

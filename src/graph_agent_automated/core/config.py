@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     judge_model: str = "gpt-4.1-mini"
     auth_enabled: bool = False
     auth_api_keys_json: str = "{}"
+    auth_jwt_keys_json: str = "{}"
+    auth_jwt_issuer: str = ""
+    auth_jwt_audience: str = ""
+    auth_jwt_clock_skew_seconds: int = Field(default=30, ge=0, le=600)
     auth_default_tenant_id: str = "default"
 
     default_dataset_size: int = Field(default=12, ge=6, le=30)

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -14,6 +18,13 @@ from graph_agent_automated.application.services import AgentOptimizationService
 from graph_agent_automated.core.config import get_settings
 from graph_agent_automated.core.database import Base
 from graph_agent_automated.main import create_app
+
+JWT_ISSUER = "graph-agent-auth"
+JWT_AUDIENCE = "graph-agent-clients"
+JWT_KEYS = {
+    "kid-old": "old-secret",
+    "kid-new": "new-secret",
+}
 
 
 @pytest.fixture
@@ -76,6 +87,10 @@ def secured_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClien
             ensure_ascii=False,
         ),
     )
+    monkeypatch.setenv("AUTH_JWT_KEYS_JSON", json.dumps(JWT_KEYS, ensure_ascii=False))
+    monkeypatch.setenv("AUTH_JWT_ISSUER", JWT_ISSUER)
+    monkeypatch.setenv("AUTH_JWT_AUDIENCE", JWT_AUDIENCE)
+    monkeypatch.setenv("AUTH_JWT_CLOCK_SKEW_SECONDS", "15")
     monkeypatch.setenv("AUTH_DEFAULT_TENANT_ID", "default")
     get_settings.cache_clear()
 
@@ -101,6 +116,44 @@ def secured_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClien
         yield c
 
     app.dependency_overrides.clear()
+
+
+def _base64url_encode(payload: bytes) -> str:
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _issue_jwt(
+    *,
+    kid: str,
+    secret: str,
+    tenant_id: str,
+    role: str,
+    principal: str,
+    ttl_seconds: int = 120,
+) -> str:
+    now = int(time.time())
+    header = {"alg": "HS256", "typ": "JWT", "kid": kid}
+    claims = {
+        "sub": principal,
+        "tenant_id": tenant_id,
+        "role": role,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
+        "iat": now,
+        "nbf": now - 1,
+        "exp": now + ttl_seconds,
+    }
+
+    header_segment = _base64url_encode(
+        json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    claims_segment = _base64url_encode(
+        json.dumps(claims, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    signing_input = f"{header_segment}.{claims_segment}".encode("ascii")
+    signature = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    signature_segment = _base64url_encode(signature)
+    return f"{header_segment}.{claims_segment}.{signature_segment}"
 
 
 def test_optimize_and_version_lifecycle(client: TestClient) -> None:
@@ -275,7 +328,7 @@ def test_auth_enabled_requires_api_key(secured_client: TestClient) -> None:
         },
     )
     assert resp.status_code == 401
-    assert "X-API-Key" in resp.json()["detail"]
+    assert "missing credentials" in resp.json()["detail"]
 
 
 def test_viewer_role_cannot_optimize(secured_client: TestClient) -> None:
@@ -330,3 +383,76 @@ def test_tenant_isolation_with_same_agent_name(secured_client: TestClient) -> No
     assert len(versions_b.json()) == 1
     assert versions_a.json()[0]["version"] == 1
     assert versions_b.json()[0]["version"] == 1
+
+
+def test_jwt_admin_can_optimize_and_list_versions(secured_client: TestClient) -> None:
+    token = _issue_jwt(
+        kid="kid-new",
+        secret=JWT_KEYS["kid-new"],
+        tenant_id="tenant-a",
+        role="admin",
+        principal="jwt-admin",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    optimize_resp = secured_client.post(
+        "/v1/agents/optimize",
+        json={
+            "agent_name": "jwt-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+        headers=headers,
+    )
+    assert optimize_resp.status_code == 200
+    assert optimize_resp.json()["version"] == 1
+
+    versions_resp = secured_client.get("/v1/agents/jwt-agent/versions", headers=headers)
+    assert versions_resp.status_code == 200
+    versions = versions_resp.json()
+    assert len(versions) == 1
+    assert versions[0]["version"] == 1
+
+
+def test_jwt_rotated_old_key_still_accepted(secured_client: TestClient) -> None:
+    token = _issue_jwt(
+        kid="kid-old",
+        secret=JWT_KEYS["kid-old"],
+        tenant_id="tenant-b",
+        role="admin",
+        principal="jwt-rotated",
+    )
+    resp = secured_client.post(
+        "/v1/agents/optimize",
+        json={
+            "agent_name": "jwt-rotated-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["version"] == 1
+
+
+def test_jwt_invalid_signature_rejected(secured_client: TestClient) -> None:
+    token = _issue_jwt(
+        kid="kid-new",
+        secret="wrong-secret",
+        tenant_id="tenant-a",
+        role="admin",
+        principal="jwt-invalid",
+    )
+    resp = secured_client.post(
+        "/v1/agents/optimize",
+        json={
+            "agent_name": "jwt-invalid-agent",
+            "task_desc": "图查询任务",
+            "dataset_size": 8,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 401
+    assert "invalid jwt signature" in resp.json()["detail"]
