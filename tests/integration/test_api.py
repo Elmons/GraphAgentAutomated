@@ -280,6 +280,7 @@ def test_manual_parity_endpoint(client: TestClient, tmp_path: Path) -> None:
     assert "manual_score" in payload
     assert "parity_achieved" in payload
     assert payload["evaluated_cases"] > 0
+    assert isinstance(payload["failure_taxonomy"], dict)
 
 
 def test_manual_parity_rejects_uncontrolled_path(client: TestClient, tmp_path: Path) -> None:

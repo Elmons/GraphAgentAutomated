@@ -59,6 +59,7 @@ class ManualParityResponse(BaseModel):
     auto_artifact_path: str
     manual_blueprint_path: str
     evaluated_cases: int
+    failure_taxonomy: dict[str, object] = Field(default_factory=dict)
 
 
 class AsyncJobSubmitResponse(BaseModel):

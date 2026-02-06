@@ -55,6 +55,9 @@
 - 推荐参数：`--benchmark-path docs/benchmarks/research_benchmark_v1.json`
 - 基线：默认运行；消融：使用 `--include-ablations`。
 - `artifacts/experiments/<date>/`：原始 run 与聚合统计。
+- `scripts/run_manual_parity_matrix.py`：执行 `full_system` vs `manual` 对标评测（冻结任务簇）。
+- `artifacts/manual_parity/<date>/parity_stats.json`：mean delta + bootstrap CI + Wilcoxon + Cliff's delta。
+- `artifacts/manual_parity/<date>/failure_taxonomy_summary.json`：失败类型占比与严重度。
 
 ## 7. 运行门槛
 

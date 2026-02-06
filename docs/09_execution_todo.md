@@ -68,11 +68,15 @@
 - 状态：`[x]` 冻结真实任务簇与人工蓝图集（Research Benchmark Freeze）  
   - 已完成：`docs/benchmarks/research_benchmark_v1.json`（12 任务，四类各 >= 3，含 `default_seeds`）与 `docs/manual_blueprints/research_benchmark_v1/` 人工蓝图集；实验脚本默认读取该冻结基准并默认使用 benchmark seeds。
 
-- 状态：`[ ]` 跑通真实 runtime + 真实 judge 的 parity 主实验  
-验收：`full_system` vs `manual` 在冻结任务集上完成多 seed 评测，输出可复现实验工件与统计显著性。
+- 状态：`[~]` 跑通真实 runtime + 真实 judge 的 parity 主实验  
+  - 已完成：`scripts/run_manual_parity_matrix.py` 增加统计显著性输出（`parity_stats.json`：bootstrap CI / Wilcoxon / Cliff's delta）与失败分型聚合输出（`failure_taxonomy_summary.json`）。  
+  - 未完成：在真实 runtime + 真实 judge 环境下跑完冻结任务簇多 seed 主实验并沉淀最终工件。  
+  - 验收：`full_system` vs `manual` 在冻结任务集上完成多 seed 评测，输出可复现实验工件与统计显著性。
 
-- 状态：`[ ]` 建立 failure taxonomy（不是只看均分）  
-验收：把失败切分为 tool selection / decomposition / execution grounding / verifier mismatch 等类型，并产出占比与严重度。
+- 状态：`[~]` 建立 failure taxonomy（不是只看均分）  
+  - 已完成：新增失败分型器，覆盖 `tool_selection / decomposition / execution_grounding / verifier_mismatch / other`，并输出类别占比与严重度。  
+  - 未完成：基于真实 runtime 主实验结果校准规则并形成稳定分析报告。  
+  - 验收：把失败切分为 tool selection / decomposition / execution grounding / verifier mismatch 等类型，并产出占比与严重度。
 
 - 状态：`[ ]` 形成 research idea backlog（至少 3 个可证伪假设）并做小步 ablation  
 验收：每个 idea 都有“动机-机制-可证伪条件-最小实验”，至少完成 1 个 idea 的端到端实现与对照实验。

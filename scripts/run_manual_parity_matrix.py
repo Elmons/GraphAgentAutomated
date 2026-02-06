@@ -11,6 +11,15 @@ from typing import Any
 
 import httpx
 
+from graph_agent_automated.infrastructure.evaluation.failure_taxonomy import (
+    FAILURE_CATEGORIES,
+    FAILURE_SEVERITIES,
+)
+from graph_agent_automated.infrastructure.evaluation.parity_statistics import (
+    cliffs_delta,
+    paired_bootstrap_mean_ci,
+    wilcoxon_signed_rank,
+)
 from graph_agent_automated.infrastructure.runtime.research_benchmark import (
     BenchmarkTaskSpec,
     load_research_benchmark,
@@ -82,21 +91,102 @@ def run_once(
 def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in records:
-        by_task[str(row["task_desc"])].append(row)
+        by_task[str(row["task_id"])].append(row)
 
     summary: list[dict[str, Any]] = []
-    for task, rows in by_task.items():
+    for task_id, rows in by_task.items():
         parity_rate = mean([1.0 if row["parity_achieved"] else 0.0 for row in rows])
         avg_delta = mean([float(row["score_delta"]) for row in rows])
         summary.append(
             {
-                "task_desc": task,
+                "task_id": task_id,
+                "task_desc": str(rows[0]["task_desc"]) if rows else "",
+                "task_category": str(rows[0]["task_category"]) if rows else "",
                 "runs": len(rows),
                 "parity_rate": parity_rate,
                 "avg_score_delta": avg_delta,
+                "avg_auto_score": mean([float(row["auto_score"]) for row in rows]),
+                "avg_manual_score": mean([float(row["manual_score"]) for row in rows]),
             }
         )
     return summary
+
+
+def build_parity_statistics(records: list[dict[str, Any]]) -> dict[str, Any]:
+    if not records:
+        return {
+            "n_runs": 0,
+            "parity_rate": 0.0,
+            "mean_score_delta": 0.0,
+            "mean_score_delta_ci95": [0.0, 0.0],
+            "wilcoxon": {
+                "n_pairs": 0.0,
+                "n_non_zero": 0.0,
+                "w_plus": 0.0,
+                "w_minus": 0.0,
+                "z_score": 0.0,
+                "p_value": 1.0,
+            },
+            "cliffs_delta": {"value": 0.0, "magnitude": "negligible"},
+        }
+
+    auto_scores = [float(row["auto_score"]) for row in records]
+    manual_scores = [float(row["manual_score"]) for row in records]
+    deltas = [auto - manual for auto, manual in zip(auto_scores, manual_scores, strict=True)]
+    ci_lo, ci_hi = paired_bootstrap_mean_ci(deltas)
+    wilcoxon = wilcoxon_signed_rank(auto_scores, manual_scores)
+    cliffs_value, cliffs_magnitude = cliffs_delta(auto_scores, manual_scores)
+    parity_rate = mean([1.0 if row["parity_achieved"] else 0.0 for row in records])
+
+    return {
+        "n_runs": len(records),
+        "parity_rate": parity_rate,
+        "mean_score_delta": mean(deltas),
+        "mean_score_delta_ci95": [ci_lo, ci_hi],
+        "wilcoxon": wilcoxon,
+        "cliffs_delta": {"value": cliffs_value, "magnitude": cliffs_magnitude},
+    }
+
+
+def aggregate_failure_taxonomy(records: list[dict[str, Any]]) -> dict[str, Any]:
+    by_category = {category: 0 for category in FAILURE_CATEGORIES}
+    by_severity = {severity: 0 for severity in FAILURE_SEVERITIES}
+    total_failures = 0
+
+    for row in records:
+        taxonomy = row.get("failure_taxonomy")
+        if not isinstance(taxonomy, dict):
+            continue
+        total_failures += int(taxonomy.get("total_failures", 0))
+
+        category_map = taxonomy.get("by_category", {})
+        if isinstance(category_map, dict):
+            for category in FAILURE_CATEGORIES:
+                by_category[category] += int(category_map.get(category, 0))
+
+        severity_map = taxonomy.get("by_severity", {})
+        if isinstance(severity_map, dict):
+            for severity in FAILURE_SEVERITIES:
+                by_severity[severity] += int(severity_map.get(severity, 0))
+
+    by_category_ratio = (
+        {category: by_category[category] / total_failures for category in FAILURE_CATEGORIES}
+        if total_failures > 0
+        else {category: 0.0 for category in FAILURE_CATEGORIES}
+    )
+    by_severity_ratio = (
+        {severity: by_severity[severity] / total_failures for severity in FAILURE_SEVERITIES}
+        if total_failures > 0
+        else {severity: 0.0 for severity in FAILURE_SEVERITIES}
+    )
+
+    return {
+        "total_failures": total_failures,
+        "by_category": by_category,
+        "by_category_ratio": by_category_ratio,
+        "by_severity": by_severity,
+        "by_severity_ratio": by_severity_ratio,
+    }
 
 
 def main() -> None:
@@ -140,6 +230,9 @@ def main() -> None:
                 row["seed"] = seed
                 row["agent_name"] = agent_name
                 row["manual_blueprint_path"] = manual_blueprint_path
+                row["failure_taxonomy"] = (
+                    row.get("failure_taxonomy") if isinstance(row.get("failure_taxonomy"), dict) else {}
+                )
                 records.append(row)
                 print(
                     f"[ok] task={task.task_id} seed={seed} "
@@ -148,11 +241,17 @@ def main() -> None:
                 )
 
     summary = summarize(records)
+    parity_stats = build_parity_statistics(records)
+    failure_taxonomy_summary = aggregate_failure_taxonomy(records)
 
     with open(out_dir / "records.json", "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
     with open(out_dir / "summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
+    with open(out_dir / "parity_stats.json", "w", encoding="utf-8") as f:
+        json.dump(parity_stats, f, ensure_ascii=False, indent=2)
+    with open(out_dir / "failure_taxonomy_summary.json", "w", encoding="utf-8") as f:
+        json.dump(failure_taxonomy_summary, f, ensure_ascii=False, indent=2)
     with open(out_dir / "manifest.json", "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -192,12 +291,30 @@ def main() -> None:
     for row in summary:
         print(
             " - task={task} n={runs} parity_rate={rate:.2%} avg_delta={delta:.4f}".format(
-                task=row["task_desc"][:36],
+                task=row["task_id"],
                 runs=row["runs"],
                 rate=row["parity_rate"],
                 delta=row["avg_score_delta"],
             )
         )
+    print(
+        " - global parity_rate={rate:.2%} mean_delta={delta:.4f} ci95=[{lo:.4f}, {hi:.4f}] "
+        "wilcoxon_p={p:.4f} cliffs_delta={effect:.4f}({magnitude})".format(
+            rate=parity_stats["parity_rate"],
+            delta=parity_stats["mean_score_delta"],
+            lo=parity_stats["mean_score_delta_ci95"][0],
+            hi=parity_stats["mean_score_delta_ci95"][1],
+            p=parity_stats["wilcoxon"]["p_value"],
+            effect=parity_stats["cliffs_delta"]["value"],
+            magnitude=parity_stats["cliffs_delta"]["magnitude"],
+        )
+    )
+    print(
+        " - failures total={total} categories={categories}".format(
+            total=failure_taxonomy_summary["total_failures"],
+            categories=failure_taxonomy_summary["by_category"],
+        )
+    )
 
 
 if __name__ == "__main__":

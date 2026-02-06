@@ -214,6 +214,7 @@ def benchmark_manual_parity(
             auto_artifact_path=report.auto_artifact_path,
             manual_blueprint_path=report.manual_blueprint_path,
             evaluated_cases=report.evaluated_cases,
+            failure_taxonomy=report.failure_taxonomy,
         )
         if should_finalize_idempotency and normalized_key is not None:
             idempotency_store.complete(scope, normalized_key, response.model_dump(mode="json"))
@@ -282,6 +283,7 @@ def benchmark_manual_parity_async(
             "auto_artifact_path": report.auto_artifact_path,
             "manual_blueprint_path": report.manual_blueprint_path,
             "evaluated_cases": report.evaluated_cases,
+            "failure_taxonomy": report.failure_taxonomy,
         }
 
     try:

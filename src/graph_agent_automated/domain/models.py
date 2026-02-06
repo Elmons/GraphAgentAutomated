@@ -242,3 +242,4 @@ class ManualParityReport:
     auto_artifact_path: str
     manual_blueprint_path: str
     evaluated_cases: int
+    failure_taxonomy: dict[str, object] = field(default_factory=dict)

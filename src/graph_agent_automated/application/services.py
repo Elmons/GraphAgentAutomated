@@ -12,12 +12,16 @@ from graph_agent_automated.core.config import Settings, get_settings
 from graph_agent_automated.domain.enums import AgentLifecycle, ExperimentProfile
 from graph_agent_automated.domain.models import (
     AgentVersionRecord,
+    CaseExecution,
     EvaluationSummary,
     ManualParityReport,
     OptimizationKnobs,
     OptimizationReport,
     SearchConfig,
     SyntheticCase,
+)
+from graph_agent_automated.infrastructure.evaluation.failure_taxonomy import (
+    build_failure_taxonomy,
 )
 from graph_agent_automated.infrastructure.evaluation.judges import (
     build_default_judge_ensemble,
@@ -246,6 +250,11 @@ class AgentOptimizationService:
         manual_score = manual_eval.mean_score
         score_delta = auto_score - manual_score
         parity_achieved = auto_score + parity_margin >= manual_score
+        failure_taxonomy = build_failure_taxonomy(
+            auto_eval=auto_eval,
+            manual_eval=manual_eval,
+            failure_margin=parity_margin,
+        )
 
         artifact_path = auto_report.registry_record.artifact_path
         artifact_dir = Path(artifact_path).resolve().parent
@@ -261,9 +270,25 @@ class AgentOptimizationService:
             "manual_blueprint_path": str(resolved_manual_blueprint_path),
             "evaluated_cases": manual_eval.total_cases,
             "auto_artifact_path": artifact_path,
+            "failure_taxonomy": failure_taxonomy,
         }
         with open(artifact_dir / "manual_parity_report.json", "w", encoding="utf-8") as f:
             json.dump(report_payload, f, ensure_ascii=False, indent=2)
+        with open(artifact_dir / "manual_parity_case_report.json", "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "run_id": auto_report.run_id,
+                    "split": split,
+                    "parity_margin": parity_margin,
+                    "auto_cases": [self._serialize_case_execution(case) for case in auto_eval.case_results],
+                    "manual_cases": [
+                        self._serialize_case_execution(case) for case in manual_eval.case_results
+                    ],
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
 
         return ManualParityReport(
             run_id=auto_report.run_id,
@@ -277,6 +302,7 @@ class AgentOptimizationService:
             auto_artifact_path=artifact_path,
             manual_blueprint_path=str(resolved_manual_blueprint_path),
             evaluated_cases=manual_eval.total_cases,
+            failure_taxonomy=failure_taxonomy,
         )
 
     def list_versions(self, agent_name: str) -> list[dict[str, object]]:
@@ -379,3 +405,24 @@ class AgentOptimizationService:
         if split == "val" and report.validation_evaluation is not None:
             return report.validation_evaluation
         return report.best_evaluation
+
+    def _serialize_case_execution(self, case: CaseExecution) -> dict[str, object]:
+        return {
+            "case_id": case.case_id,
+            "question": case.question,
+            "expected": case.expected,
+            "output": case.output,
+            "score": float(case.score),
+            "rationale": case.rationale,
+            "latency_ms": float(case.latency_ms),
+            "token_cost": float(case.token_cost),
+            "confidence": float(case.confidence),
+            "judge_votes": [
+                {
+                    "judge_name": vote.judge_name,
+                    "score": float(vote.score),
+                    "rationale": vote.rationale,
+                }
+                for vote in case.judge_votes
+            ],
+        }

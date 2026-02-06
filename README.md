@@ -100,6 +100,7 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 
 返回 `parity_achieved=true` 表示自动方案在容差 `parity_margin` 内达到人工设计水平。
 `manual_blueprint_path` 必须位于 `MANUAL_BLUEPRINTS_DIR`（默认 `./artifacts/manual_blueprints`）目录下。
+响应中包含 `failure_taxonomy`（失败类型占比与严重度）。
 
 研究基准冻结文件：
 
@@ -108,6 +109,10 @@ uv run python scripts/cleanup_artifacts.py --retention-days 30 --keep-latest-per
 - 若不显式传 `--seeds`，实验脚本将默认使用 benchmark 文件中的 `default_seeds`。
 
 运行 parity matrix 时，建议将服务端 `MANUAL_BLUEPRINTS_DIR` 指向该人工蓝图库目录。
+`scripts/run_manual_parity_matrix.py` 会额外产出：
+
+- `parity_stats.json`（mean delta、bootstrap CI、Wilcoxon、Cliff's delta）
+- `failure_taxonomy_summary.json`（失败类型与严重度聚合）
 
 ## 异步任务接口
 
