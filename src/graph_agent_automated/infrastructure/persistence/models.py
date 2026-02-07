@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from graph_agent_automated.core.database import Base
@@ -40,6 +40,7 @@ class AgentVersionORM(Base):
     blueprint_json: Mapped[str] = mapped_column(Text, nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     artifact_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    workflow_snapshot: Mapped[str] = mapped_column(Text, default="", nullable=False)
     notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
@@ -95,6 +96,9 @@ class OptimizationRunORM(Base):
     round_traces: Mapped[list[OptimizationRoundTraceORM]] = relationship(
         "OptimizationRoundTraceORM", back_populates="run", cascade="all, delete-orphan"
     )
+    artifacts: Mapped[list[OptimizationArtifactORM]] = relationship(
+        "OptimizationArtifactORM", back_populates="run", cascade="all, delete-orphan"
+    )
     versions: Mapped[list[AgentVersionORM]] = relationship("AgentVersionORM", back_populates="optimization_run")
 
 
@@ -117,3 +121,24 @@ class OptimizationRoundTraceORM(Base):
     regret: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
     run: Mapped[OptimizationRunORM] = relationship("OptimizationRunORM", back_populates="round_traces")
+
+
+class OptimizationArtifactORM(Base):
+    __tablename__ = "optimization_artifacts"
+    __table_args__ = (
+        UniqueConstraint("run_id", "artifact_type", name="uq_optimization_artifacts_run_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("optimization_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    artifact_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    uri: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    checksum: Mapped[str] = mapped_column(String(128), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    run: Mapped[OptimizationRunORM] = relationship("OptimizationRunORM", back_populates="artifacts")

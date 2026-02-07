@@ -57,6 +57,7 @@ class Settings(BaseSettings):
 
     artifacts_dir: str = "./artifacts"
     manual_blueprints_dir: str = "./artifacts/manual_blueprints"
+    artifact_store_backend: str = "local"
 
     @property
     def artifacts_path(self) -> Path:

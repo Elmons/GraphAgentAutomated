@@ -188,3 +188,4 @@ JWT 配置（支持密钥轮换）：
 - `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` 可选开启 `iss`/`aud` 校验。
 - token 需包含 `tenant_id`、`role`、`exp` claims；当配置了多个 key 时，JWT header 必须带 `kid`。
 - `FAILURE_TAXONOMY_RULES_FILE` 可选指定失败分型规则 JSON（默认使用内置 v1 规则）。
+- `ARTIFACT_STORE_BACKEND` 默认为 `local`，可切到 `memory/mock` 用于扩展性与测试验证。

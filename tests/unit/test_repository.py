@@ -20,7 +20,10 @@ from graph_agent_automated.domain.models import (
     WorkflowBlueprint,
 )
 from graph_agent_automated.infrastructure.persistence.models import Base
-from graph_agent_automated.infrastructure.persistence.repositories import AgentRepository
+from graph_agent_automated.infrastructure.persistence.repositories import (
+    AgentRepository,
+    ArtifactIndexRecord,
+)
 
 
 def _session() -> Session:
@@ -76,6 +79,7 @@ def test_repository_version_and_deploy_flow() -> None:
         blueprint=_blueprint("bp-1"),
         evaluation=_evaluation("bp-1", 0.7),
         artifact_path="/tmp/a.yml",
+        workflow_snapshot="snapshot-v1",
         lifecycle=AgentLifecycle.VALIDATED,
     )
     session.commit()
@@ -101,6 +105,7 @@ def test_repository_version_and_deploy_flow() -> None:
 
     first = repo.get_version("agentA", 1)
     assert first.blueprint_id == "bp-1"
+    assert first.workflow_snapshot == "snapshot-v1"
 
 
 def test_repository_persists_optimization_run_and_traces() -> None:
@@ -143,6 +148,23 @@ def test_repository_persists_optimization_run_and_traces() -> None:
             )
         ],
     )
+    repo.add_artifact_indexes(
+        run.id,
+        [
+            ArtifactIndexRecord(
+                artifact_type="workflow_yaml",
+                uri="local://agents/agentA/run-test/workflow.yml",
+                checksum="abc",
+                size_bytes=12,
+            ),
+            ArtifactIndexRecord(
+                artifact_type="run_summary",
+                uri="local://agents/agentA/run-test/run_summary.json",
+                checksum="def",
+                size_bytes=21,
+            ),
+        ],
+    )
     session.commit()
 
     version = repo.create_version(
@@ -150,9 +172,14 @@ def test_repository_persists_optimization_run_and_traces() -> None:
         blueprint=blueprint,
         evaluation=evaluation,
         artifact_path="/tmp/bp-run.yml",
+        workflow_snapshot="snapshot-run",
         run_db_id=run.id,
     )
     session.commit()
 
     assert run.run_id == "run-test"
     assert version.run_id == run.id
+    assert version.workflow_snapshot == "snapshot-run"
+    loaded_run = repo.get_optimization_run("run-test")
+    assert loaded_run is not None
+    assert len(loaded_run.artifacts) == 2

@@ -108,6 +108,22 @@
 - 状态：`[~]` artifact 生命周期管理  
   - 已完成：清理策略脚本（retention + keep latest）。  
   - 未完成：归档分层与自动调度。
+- 状态：`[x]` 训练产物存储架构升级（ArtifactStore 抽象 + DB 索引）
+  - 决策（已定）：采用“混合方案”而不是“全量塞数据库”。
+  - 设计原则：
+    1. 大体积与文件型产物（`workflow.yml`、`round_traces.json`、`prompt_variants.json`、case 级报告）放在可插拔存储后端（先 local，后续可扩展 S3/OSS/MinIO）。
+    2. 数据库只存索引与关键快照（run/version 维度的元数据、存储 URI、内容哈希、schema 版本、必要的小型配置快照），用于查询、审计、复现定位。
+    3. 不把完整训练过程大 JSON 全量写入 DB，避免迁移复杂度、查询负担和数据库膨胀。
+  - 已完成：
+    1. 新增 `ArtifactStore` 抽象与 URI 规范，并实现 `LocalArtifactStore` / `InMemoryArtifactStore`（`src/graph_agent_automated/infrastructure/persistence/artifact_store.py`）。
+    2. `AgentOptimizationService` 已切换到存储抽象写入 artifact，不再直接拼接落盘路径（`src/graph_agent_automated/application/services.py`）。
+    3. 新增 artifact 索引表 `optimization_artifacts`，记录 `artifact_type`、`uri`、`checksum`、`size_bytes`、`created_at`、`run_id`。
+    4. `agent_versions` 增加 `workflow_snapshot` 字段用于快速回看 `workflow.yml` 小快照。
+    5. 补齐迁移脚本 `alembic/versions/0003_add_artifact_index_and_workflow_snapshot.py` 与单测（`tests/unit/test_artifact_store.py`、`tests/unit/test_repository.py`）。
+  - 验收：
+    1. 在不改上层 API 的情况下切换 local backend 成功。
+    2. 单次 optimize/parity 运行后，可通过 DB 追踪所有核心 artifact URI 与元信息。
+    3. 通过一个 mock 的新后端实现验证可扩展性（不要求接入真实云存储）。
 
 ## 5. 完成定义（Research-ready DoD）
 
@@ -139,3 +155,11 @@
   - 本次完成：新增项目总览文档 `docs/32_system_handbook.md`，覆盖启动方式、架构分层、模块详设、核心调用链时序图；`README.md` 文档索引已加入入口。
   - 当前阻塞：R0 仍未完成真实 runtime + 真实 judge 的冻结任务簇主实验。
   - 下一步：按 `docs/20_real_experiment_plan.md` 在真实 runtime 环境跑 `scripts/run_research_pipeline.py`，沉淀 parity 与 gate 工件。
+- 2026-02-07（存储方案讨论）：
+  - 本次完成：新增“训练产物存储架构升级”待办，明确采用 `ArtifactStore` 可插拔后端 + DB 索引的混合方案。
+  - 当前阻塞：尚未实现存储接口、DB 索引模型与迁移。
+  - 下一步：新会话先落 `ArtifactStore` 接口与 `LocalArtifactStore`，再做 DB 索引表与服务层接入。
+- 2026-02-07（存储方案落地）：
+  - 本次完成：实现 `ArtifactStore` 抽象（local + memory），`AgentOptimizationService` 改为通过 store 写入 artifact；新增 `optimization_artifacts` 索引表与 `workflow_snapshot` 字段，并完成迁移与单测。
+  - 当前阻塞：R0 仍未完成真实 runtime + 真实 judge 的冻结任务簇主实验。
+  - 下一步：在真实 runtime 环境执行 `scripts/run_research_pipeline.py`，产出 parity/gate/failure taxonomy 工件。

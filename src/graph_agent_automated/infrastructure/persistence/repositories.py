@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Sequence
 
 from sqlalchemy import Select, desc, select
@@ -18,9 +18,18 @@ from graph_agent_automated.infrastructure.persistence.models import (
     AgentORM,
     AgentVersionORM,
     EvaluationCaseORM,
+    OptimizationArtifactORM,
     OptimizationRoundTraceORM,
     OptimizationRunORM,
 )
+
+
+@dataclass(frozen=True)
+class ArtifactIndexRecord:
+    artifact_type: str
+    uri: str
+    checksum: str
+    size_bytes: int
 
 
 class AgentRepository:
@@ -56,6 +65,7 @@ class AgentRepository:
         blueprint: WorkflowBlueprint,
         evaluation: EvaluationSummary,
         artifact_path: str,
+        workflow_snapshot: str = "",
         run_db_id: int | None = None,
         lifecycle: AgentLifecycle = AgentLifecycle.VALIDATED,
         notes: str = "",
@@ -71,6 +81,7 @@ class AgentRepository:
             blueprint_json=json.dumps(asdict(blueprint), ensure_ascii=False),
             score=evaluation.mean_score,
             artifact_path=artifact_path,
+            workflow_snapshot=workflow_snapshot,
             notes=notes,
             run_id=run_db_id,
         )
@@ -140,6 +151,22 @@ class AgentRepository:
                     regret=trace.regret,
                 )
             )
+
+    def add_artifact_indexes(self, run_db_id: int, artifacts: Sequence[ArtifactIndexRecord]) -> None:
+        for artifact in artifacts:
+            self._session.add(
+                OptimizationArtifactORM(
+                    run_id=run_db_id,
+                    artifact_type=artifact.artifact_type,
+                    uri=artifact.uri,
+                    checksum=artifact.checksum,
+                    size_bytes=artifact.size_bytes,
+                )
+            )
+
+    def get_optimization_run(self, run_id: str) -> OptimizationRunORM | None:
+        stmt = select(OptimizationRunORM).where(OptimizationRunORM.run_id == run_id).limit(1)
+        return self._session.execute(stmt).scalar_one_or_none()
 
     def list_versions(self, agent_name: str) -> list[AgentVersionORM]:
         stmt = (

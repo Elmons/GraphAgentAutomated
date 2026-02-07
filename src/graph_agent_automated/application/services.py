@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -42,8 +43,15 @@ from graph_agent_automated.infrastructure.optimization.search_engine import (
     infer_intents,
 )
 from graph_agent_automated.infrastructure.optimization.tool_selector import IntentAwareToolSelector
+from graph_agent_automated.infrastructure.persistence.artifact_store import (
+    ArtifactStore,
+    LocalArtifactStore,
+    StoredArtifact,
+    build_artifact_store,
+)
 from graph_agent_automated.infrastructure.persistence.repositories import (
     AgentRepository,
+    ArtifactIndexRecord,
     list_to_dict,
     to_version_dict,
 )
@@ -60,9 +68,15 @@ from graph_agent_automated.infrastructure.synthesis.dynamic_synthesizer import (
 class AgentOptimizationService:
     """Application service orchestrating synthesis, optimization, evaluation, and persistence."""
 
-    def __init__(self, session: Session, settings: Settings | None = None):
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings | None = None,
+        artifact_store: ArtifactStore | None = None,
+    ):
         self._session = session
         self._settings = settings or get_settings()
+        self._artifact_store = artifact_store or build_artifact_store(self._settings)
         self._failure_taxonomy_rules = self._resolve_failure_taxonomy_rules()
 
     @property
@@ -151,18 +165,30 @@ class AgentOptimizationService:
             }
         )
 
-        artifact_dir = self._settings.artifacts_path / "agents" / agent_name / run_id
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-
-        workflow_path = runtime.materialize(result.best_blueprint, artifact_dir)
-        self._write_report_artifacts(
-            artifact_dir=artifact_dir,
-            result=result,
-            dataset=dataset,
-            run_id=run_id,
-            profile=profile,
-            seed=seed,
-            knobs=knobs,
+        artifact_prefix = self._build_run_artifact_prefix(agent_name=agent_name, run_id=run_id)
+        workflow_artifact, workflow_snapshot = self._write_workflow_artifact(
+            runtime=runtime,
+            artifact_prefix=artifact_prefix,
+            blueprint=result.best_blueprint,
+        )
+        artifact_indexes = [
+            ArtifactIndexRecord(
+                artifact_type="workflow_yaml",
+                uri=workflow_artifact.uri,
+                checksum=workflow_artifact.checksum,
+                size_bytes=workflow_artifact.size_bytes,
+            )
+        ]
+        artifact_indexes.extend(
+            self._write_report_artifacts(
+                artifact_prefix=artifact_prefix,
+                result=result,
+                dataset=dataset,
+                run_id=run_id,
+                profile=profile,
+                seed=seed,
+                knobs=knobs,
+            )
         )
 
         report = OptimizationReport(
@@ -181,16 +207,18 @@ class AgentOptimizationService:
         run_row = repo.create_optimization_run(
             agent_name=agent_name,
             task_desc=task_desc,
-            artifact_dir=str(artifact_dir),
+            artifact_dir=self._run_artifact_reference(artifact_prefix),
             report=report,
         )
         repo.add_round_traces(run_row.id, result.round_traces)
+        repo.add_artifact_indexes(run_row.id, artifact_indexes)
 
         version_row = repo.create_version(
             agent_name=agent_name,
             blueprint=result.best_blueprint,
             evaluation=result.validation_evaluation or result.best_evaluation,
-            artifact_path=str(workflow_path),
+            artifact_path=self._artifact_reference(workflow_artifact),
+            workflow_snapshot=workflow_snapshot,
             run_db_id=run_row.id,
             lifecycle=AgentLifecycle.VALIDATED,
             notes="optimized by GraphAgentAutomated-v2",
@@ -267,7 +295,10 @@ class AgentOptimizationService:
         )
 
         artifact_path = auto_report.registry_record.artifact_path
-        artifact_dir = Path(artifact_path).resolve().parent
+        artifact_prefix = self._build_run_artifact_prefix(
+            agent_name=agent_name,
+            run_id=auto_report.run_id,
+        )
         report_payload = {
             "run_id": auto_report.run_id,
             "profile": profile.value,
@@ -286,23 +317,36 @@ class AgentOptimizationService:
             "auto_artifact_path": artifact_path,
             "failure_taxonomy": failure_taxonomy,
         }
-        with open(artifact_dir / "manual_parity_report.json", "w", encoding="utf-8") as f:
-            json.dump(report_payload, f, ensure_ascii=False, indent=2)
-        with open(artifact_dir / "manual_parity_case_report.json", "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "run_id": auto_report.run_id,
-                    "split": split,
-                    "parity_margin": parity_margin,
-                    "auto_cases": [self._serialize_case_execution(case) for case in auto_eval.case_results],
-                    "manual_cases": [
-                        self._serialize_case_execution(case) for case in manual_eval.case_results
-                    ],
-                },
-                f,
-                ensure_ascii=False,
-                indent=2,
+        parity_case_payload = {
+            "run_id": auto_report.run_id,
+            "split": split,
+            "parity_margin": parity_margin,
+            "auto_cases": [self._serialize_case_execution(case) for case in auto_eval.case_results],
+            "manual_cases": [self._serialize_case_execution(case) for case in manual_eval.case_results],
+        }
+        parity_indexes: list[ArtifactIndexRecord] = []
+        for artifact_type, file_name, payload in (
+            ("manual_parity_report", "manual_parity_report.json", report_payload),
+            ("manual_parity_case_report", "manual_parity_case_report.json", parity_case_payload),
+        ):
+            artifact = self._artifact_store.put(
+                f"{artifact_prefix}/{file_name}",
+                self._json_bytes(payload),
             )
+            parity_indexes.append(
+                ArtifactIndexRecord(
+                    artifact_type=artifact_type,
+                    uri=artifact.uri,
+                    checksum=artifact.checksum,
+                    size_bytes=artifact.size_bytes,
+                )
+            )
+
+        repo = AgentRepository(self._session)
+        run_row = repo.get_optimization_run(auto_report.run_id)
+        if run_row is not None and parity_indexes:
+            repo.add_artifact_indexes(run_row.id, parity_indexes)
+            self._session.commit()
 
         return ManualParityReport(
             run_id=auto_report.run_id,
@@ -344,24 +388,38 @@ class AgentOptimizationService:
         bind = self._session.get_bind()
         return sessionmaker(bind=bind, class_=Session, autocommit=False, autoflush=False)
 
+    def _write_workflow_artifact(
+        self,
+        runtime,
+        artifact_prefix: str,
+        blueprint,
+    ) -> tuple[StoredArtifact, str]:
+        with TemporaryDirectory(prefix="graph-agent-workflow-") as temp_dir:
+            workflow_path = runtime.materialize(blueprint, Path(temp_dir))
+            workflow_bytes = workflow_path.read_bytes()
+
+        workflow_artifact = self._artifact_store.put(
+            f"{artifact_prefix}/workflow.yml",
+            workflow_bytes,
+        )
+        workflow_snapshot = self._truncate_workflow_snapshot(workflow_bytes.decode("utf-8"))
+        return workflow_artifact, workflow_snapshot
+
     def _write_report_artifacts(
         self,
-        artifact_dir: Path,
+        artifact_prefix: str,
         result,
         dataset,
         run_id: str,
         profile: ExperimentProfile,
         seed: int | None,
         knobs: OptimizationKnobs,
-    ) -> None:
-        with open(artifact_dir / "dataset_report.json", "w", encoding="utf-8") as f:
-            json.dump(dataset.synthesis_report, f, ensure_ascii=False, indent=2)
-
-        with open(artifact_dir / "round_traces.json", "w", encoding="utf-8") as f:
-            json.dump([asdict(trace) for trace in result.round_traces], f, ensure_ascii=False, indent=2)
-
-        with open(artifact_dir / "prompt_variants.json", "w", encoding="utf-8") as f:
-            json.dump([asdict(variant) for variant in result.prompt_variants], f, ensure_ascii=False, indent=2)
+    ) -> list[ArtifactIndexRecord]:
+        artifacts: list[tuple[str, str, object]] = [
+            ("dataset_report", "dataset_report.json", dataset.synthesis_report),
+            ("round_traces", "round_traces.json", [asdict(trace) for trace in result.round_traces]),
+            ("prompt_variants", "prompt_variants.json", [asdict(variant) for variant in result.prompt_variants]),
+        ]
 
         summary = {
             "run_id": run_id,
@@ -378,8 +436,44 @@ class AgentOptimizationService:
             "seed": seed,
             "knobs": asdict(knobs),
         }
-        with open(artifact_dir / "run_summary.json", "w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
+        artifacts.append(("run_summary", "run_summary.json", summary))
+
+        indexes: list[ArtifactIndexRecord] = []
+        for artifact_type, file_name, payload in artifacts:
+            artifact = self._artifact_store.put(
+                f"{artifact_prefix}/{file_name}",
+                self._json_bytes(payload),
+            )
+            indexes.append(
+                ArtifactIndexRecord(
+                    artifact_type=artifact_type,
+                    uri=artifact.uri,
+                    checksum=artifact.checksum,
+                    size_bytes=artifact.size_bytes,
+                )
+            )
+        return indexes
+
+    def _artifact_reference(self, artifact: StoredArtifact) -> str:
+        if artifact.local_path is not None:
+            return artifact.local_path
+        return artifact.uri
+
+    def _run_artifact_reference(self, artifact_prefix: str) -> str:
+        if isinstance(self._artifact_store, LocalArtifactStore):
+            return str(self._artifact_store.root / artifact_prefix)
+        return self._artifact_store.build_uri(artifact_prefix)
+
+    def _build_run_artifact_prefix(self, agent_name: str, run_id: str) -> str:
+        return f"agents/{agent_name}/{run_id}"
+
+    def _json_bytes(self, payload: object) -> bytes:
+        return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+    def _truncate_workflow_snapshot(self, workflow_text: str, limit: int = 8192) -> str:
+        if len(workflow_text) <= limit:
+            return workflow_text
+        return f"{workflow_text[:limit]}\n# ... truncated for DB snapshot ..."
 
     def _build_runtime(self):
         if self._settings.chat2graph_runtime_mode.lower() == "sdk":
