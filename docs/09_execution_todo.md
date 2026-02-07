@@ -1,6 +1,6 @@
 # GraphAgentAutomated Master TODO (Must-read)
 
-最后更新：2026-02-06  
+最后更新：2026-02-07  
 状态标记：`[ ]` 未开始，`[~]` 进行中，`[x]` 完成。
 
 ## 0. 新会话强制流程（所有新 Codex 必须执行）
@@ -132,3 +132,10 @@
 2. API：`src/graph_agent_automated/api/routers/agents.py`、`src/graph_agent_automated/api/schemas.py`。  
 3. 测试：`tests/integration/test_api.py`、`tests/unit/test_search_engine.py`、`tests/unit/test_workflow_loader.py`。  
 4. 脚本：`scripts/run_experiment_matrix.py`、`scripts/run_manual_parity_matrix.py`。
+
+## 8. 最近会话记录
+
+- 2026-02-07：
+  - 本次完成：新增项目总览文档 `docs/32_system_handbook.md`，覆盖启动方式、架构分层、模块详设、核心调用链时序图；`README.md` 文档索引已加入入口。
+  - 当前阻塞：R0 仍未完成真实 runtime + 真实 judge 的冻结任务簇主实验。
+  - 下一步：按 `docs/20_real_experiment_plan.md` 在真实 runtime 环境跑 `scripts/run_research_pipeline.py`，沉淀 parity 与 gate 工件。

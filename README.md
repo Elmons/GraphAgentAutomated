@@ -37,6 +37,7 @@
 26. `docs/29_research_gap_audit.md` R0 收敛缺口审计与下一步
 27. `docs/30_failure_taxonomy_rules.md` failure taxonomy 规则版本化
 28. `docs/31_hypothesis_evaluation.md` hypothesis 支持/证伪判定协议
+29. `docs/32_system_handbook.md` 系统完整介绍（启动/架构/模块/调用链）
 
 新会话入口：先读 `docs/09_execution_todo.md` 与 `docs/24_codex_session_guide.md`。
 
